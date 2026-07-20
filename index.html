@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SYNC LOOPER</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#c9c2b0;
+    --body-a:#f1ecdf;
+    --body-b:#dcd5c2;
+    --shell-edge:#b8b09c;
+    --ink:#2b2820;
+    --ink-dim:#8a8271;
+    --line:#b9b1a0;
+    --screen-bg:#12140f;
+    --screen-fg:#6fc7ff;
+    --red:#c23b2e;
+    --green:#3f8f5f;
+    --pink:#c2588f;
+    --blue:#3e6bcf;
+    --amber:#c9862f;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    min-height:100vh;
+    background:
+      radial-gradient(circle at 50% -20%, #d8d1bf 0%, var(--bg) 60%);
+    color:var(--ink);
+    font-family:'Noto Sans JP', sans-serif;
+    display:flex;
+    justify-content:center;
+    padding:40px 16px 80px;
+  }
+  .device{
+    width:100%;
+    max-width:420px;
+    background:linear-gradient(160deg, var(--body-a) 0%, var(--body-b) 100%);
+    border:1px solid var(--shell-edge);
+    border-radius:22px;
+    padding:22px 22px 26px;
+    box-shadow:
+      0 30px 60px -24px rgba(30,25,15,0.45),
+      inset 0 1px 0 rgba(255,255,255,0.6),
+      inset 0 -1px 0 rgba(0,0,0,0.06);
+    position:relative;
+  }
+  .brand-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:14px;
+  }
+  .brand{
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:700;
+    font-size:15px;
+    letter-spacing:0.02em;
+  }
+  .brand-sub{
+    font-family:'JetBrains Mono', monospace;
+    font-size:9px;
+    letter-spacing:0.18em;
+    color:var(--ink-dim);
+    margin-top:2px;
+  }
+  .led-mini{
+    width:7px;height:7px;border-radius:50%;
+    background:var(--red);
+    opacity:0.25;
+    box-shadow:none;
+    transition:opacity .15s ease, box-shadow .15s ease;
+  }
+  .led-mini.on{
+    opacity:1;
+    box-shadow:0 0 6px var(--red);
+  }
+  .hairline{
+    height:1px;
+    background:linear-gradient(90deg, transparent, var(--line) 15%, var(--line) 85%, transparent);
+    margin:14px 0;
+  }
+
+  /* ---- setup panel ---- */
+  .setup label{
+    display:block;
+    font-family:'JetBrains Mono', monospace;
+    font-size:10px;
+    letter-spacing:0.1em;
+    color:var(--ink-dim);
+    margin-bottom:6px;
+    text-transform:uppercase;
+  }
+  .setup select{
+    width:100%;
+    padding:10px 10px;
+    margin-bottom:12px;
+    background:#f7f4ec;
+    color:var(--ink);
+    border:1px solid var(--line);
+    border-radius:8px;
+    font-family:'Noto Sans JP', sans-serif;
+    font-size:13px;
+    appearance:none;
+  }
+  .btn-slab{
+    width:100%;
+    cursor:pointer;
+    padding:14px;
+    border-radius:10px;
+    border:1px solid var(--shell-edge);
+    background:linear-gradient(180deg, #f7f4ec, #e6e0cf);
+    color:var(--ink);
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:700;
+    font-size:13px;
+    letter-spacing:0.03em;
+    box-shadow:0 2px 0 rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.7);
+  }
+  .btn-slab:active{ transform:translateY(1px); box-shadow:0 1px 0 rgba(0,0,0,0.08); }
+  .error{
+    color:var(--red);
+    font-size:11px;
+    margin-top:10px;
+    font-family:'JetBrains Mono', monospace;
+  }
+  .hidden{display:none !important;}
+
+  /* ---- LCD ---- */
+  .lcd{
+    background:var(--screen-bg);
+    border-radius:6px;
+    padding:10px 14px;
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    box-shadow:inset 0 2px 6px rgba(0,0,0,0.6);
+    margin-bottom:18px;
+  }
+  .lcd-time{
+    font-family:'JetBrains Mono', monospace;
+    font-size:20px;
+    color:var(--screen-fg);
+    letter-spacing:0.05em;
+    text-shadow:0 0 8px rgba(111,199,255,0.5);
+    font-variant-numeric:tabular-nums;
+  }
+  .lcd-tag{
+    font-family:'JetBrains Mono', monospace;
+    font-size:9px;
+    color:var(--screen-fg);
+    opacity:0.7;
+    letter-spacing:0.14em;
+  }
+
+  /* ---- dial ---- */
+  .dial-wrap{
+    position:relative;
+    width:216px;
+    height:216px;
+    margin:6px auto 4px;
+  }
+  .dial-svg{ width:100%; height:100%; transform:rotate(-90deg); }
+  .dial-face{ fill:#efe9db; stroke:var(--line); stroke-width:1; }
+  .dial-progress{
+    fill:none;
+    stroke:var(--ink-dim);
+    stroke-width:3;
+    stroke-linecap:round;
+    transition:stroke-dashoffset .05s linear, stroke .2s ease;
+  }
+  .dial-progress.rec{ stroke:var(--red); }
+  .dial-progress.play{ stroke:var(--green); }
+  .dial-progress.armed{ stroke:var(--amber); }
+  .tick{ stroke:var(--ink-dim); stroke-width:1; opacity:0.5; }
+  .tick.bar-start{ stroke:var(--ink); stroke-width:1.6; opacity:0.85; }
+  .dial-cross{ stroke:var(--line); stroke-width:1; }
+  .dial-center{
+    position:absolute; inset:0;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center;
+    pointer-events:none;
+  }
+  .dial-bpm{
+    font-family:'JetBrains Mono', monospace;
+    font-weight:700;
+    font-size:34px;
+    line-height:1;
+    font-variant-numeric:tabular-nums;
+  }
+  .dial-bpm-unit{
+    font-family:'JetBrains Mono', monospace;
+    font-size:9px;
+    color:var(--ink-dim);
+    letter-spacing:0.2em;
+    margin-top:3px;
+  }
+  .dial-pos{
+    font-family:'JetBrains Mono', monospace;
+    font-size:10px;
+    color:var(--ink-dim);
+    margin-top:8px;
+    letter-spacing:0.06em;
+  }
+
+  /* ---- bars pills ---- */
+  .bars-row{
+    display:flex;
+    gap:6px;
+    justify-content:center;
+    margin:14px 0 4px;
+  }
+  .bars-row button{
+    width:38px; height:38px;
+    border-radius:50%;
+    border:1px solid var(--line);
+    background:#f4f0e5;
+    color:var(--ink-dim);
+    font-family:'JetBrains Mono', monospace;
+    font-weight:700;
+    font-size:12px;
+    cursor:pointer;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.6);
+  }
+  .bars-row button.active{
+    background:var(--ink);
+    color:var(--body-a);
+    border-color:var(--ink);
+  }
+  .bars-caption{
+    text-align:center;
+    font-family:'JetBrains Mono', monospace;
+    font-size:9px;
+    color:var(--ink-dim);
+    letter-spacing:0.14em;
+    margin-bottom:16px;
+  }
+
+  .state-line{
+    text-align:center;
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px;
+    color:var(--ink-dim);
+    margin-bottom:14px;
+    min-height:14px;
+    letter-spacing:0.03em;
+  }
+
+  /* ---- transport: PS-glyph deck buttons ---- */
+  .transport{
+    display:grid;
+    grid-template-columns:repeat(4, 1fr);
+    gap:9px;
+  }
+  .deck-btn{
+    position:relative;
+    aspect-ratio:1;
+    border-radius:12px;
+    border:1px solid var(--shell-edge);
+    background:linear-gradient(180deg, #f7f4ec, #e2dbc8);
+    box-shadow:0 2px 0 rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.7);
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .deck-btn:active{ transform:translateY(1px); box-shadow:0 1px 0 rgba(0,0,0,0.1); }
+  .deck-btn:disabled{ opacity:0.35; cursor:not-allowed; }
+  .deck-glyph{
+    width:20px; height:20px;
+    display:block;
+  }
+  .deck-label{
+    position:absolute;
+    bottom:5px;
+    font-family:'JetBrains Mono', monospace;
+    font-size:7px;
+    letter-spacing:0.1em;
+    color:var(--ink-dim);
+  }
+  .deck-glyph svg{ width:100%; height:100%; }
+  #btnRec .deck-glyph circle{ fill:var(--red); }
+  #btnRec.armed{ animation:blinkbg 0.6s step-start infinite; }
+  #btnRec.recording .deck-glyph circle{ fill:var(--red); }
+  #btnRec.recording{ background:linear-gradient(180deg,#f3d9d5,#e8c2bc); }
+  @keyframes blinkbg{ 50%{ background:linear-gradient(180deg,#f3d9d5,#e8c2bc); } }
+  #btnPlay .deck-glyph polygon{ fill:var(--ink); }
+  #btnPlay.playing{ background:linear-gradient(180deg,#d9ecdf,#c3ddc9); }
+  #btnPlay.playing .deck-glyph polygon{ fill:var(--green); }
+  #btnStop .deck-glyph rect{ fill:var(--ink); }
+  #btnClear .deck-glyph path, #btnClear .deck-glyph line{ stroke:var(--ink); }
+
+  .reset-row{ text-align:center; margin-top:14px; }
+  .reset-row button{
+    background:none; border:none; cursor:pointer;
+    font-family:'JetBrains Mono', monospace;
+    font-size:10px;
+    color:var(--ink-dim);
+    text-decoration:underline;
+    letter-spacing:0.04em;
+  }
+</style>
+</head>
+<body>
+<div class="device">
+  <div class="brand-row">
+    <div>
+      <div class="brand">SYNC LOOPER</div>
+      <div class="brand-sub">CIRCUIT CLOCK / AUDIO I-O</div>
+    </div>
+    <span class="led-mini" id="syncLed"></span>
+  </div>
+
+  <div class="hairline"></div>
+
+  <div class="setup" id="setupPanel">
+    <label for="midiSelect">MIDI入力(クロックのマスター)</label>
+    <select id="midiSelect" disabled><option>権限を許可してください</option></select>
+
+    <label for="audioInSelect">オーディオ入力</label>
+    <select id="audioInSelect" disabled><option>権限を許可してください</option></select>
+
+    <label for="audioOutSelect">オーディオ出力</label>
+    <select id="audioOutSelect" disabled><option>権限を許可してください</option></select>
+
+    <div style="height:6px;"></div>
+    <button class="btn-slab" id="btnGrant">デバイスへのアクセスを許可</button>
+    <button class="btn-slab hidden" id="btnConnect" style="margin-top:10px;">この設定で接続する</button>
+    <div class="error hidden" id="errorLine"></div>
+  </div>
+
+  <div class="hidden" id="performPanel">
+    <div class="lcd">
+      <span class="lcd-time" id="lcdTime">0:00:00</span>
+      <span class="lcd-tag" id="lcdTag">READY</span>
+    </div>
+
+    <div class="dial-wrap">
+      <svg class="dial-svg" viewBox="0 0 100 100">
+        <circle class="dial-face" cx="50" cy="50" r="46"></circle>
+        <line class="dial-cross" x1="50" y1="6" x2="50" y2="14"></line>
+        <line class="dial-cross" x1="50" y1="86" x2="50" y2="94"></line>
+        <g id="dialTicks"></g>
+        <circle id="dialProgress" class="dial-progress" cx="50" cy="50" r="40" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"></circle>
+      </svg>
+      <div class="dial-center">
+        <div class="dial-bpm" id="bpmNum">---</div>
+        <div class="dial-bpm-unit">BPM</div>
+        <div class="dial-pos" id="posLabel">BAR – / – ・ BEAT –</div>
+      </div>
+    </div>
+
+    <div class="bars-row" id="barsSelect">
+      <button data-bars="1">1</button>
+      <button data-bars="2">2</button>
+      <button data-bars="4" class="active">4</button>
+      <button data-bars="8">8</button>
+    </div>
+    <div class="bars-caption">LOOP LENGTH (BARS)</div>
+
+    <div class="state-line" id="stateLine">待機中 — REC で次の小節頭から録音</div>
+
+    <div class="transport">
+      <button class="deck-btn" id="btnRec" title="REC">
+        <span class="deck-glyph"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle></svg></span>
+        <span class="deck-label">REC</span>
+      </button>
+      <button class="deck-btn" id="btnPlay" disabled title="PLAY">
+        <span class="deck-glyph"><svg viewBox="0 0 24 24"><polygon points="7,4 20,12 7,20"></polygon></svg></span>
+        <span class="deck-label">PLAY</span>
+      </button>
+      <button class="deck-btn" id="btnStop" disabled title="STOP">
+        <span class="deck-glyph"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14"></rect></svg></span>
+        <span class="deck-label">STOP</span>
+      </button>
+      <button class="deck-btn" id="btnClear" disabled title="CLEAR">
+        <span class="deck-glyph"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round"><line x1="5" y1="5" x2="19" y2="19"></line><line x1="19" y1="5" x2="5" y2="19"></line></svg></span>
+        <span class="deck-label">CLEAR</span>
+      </button>
+    </div>
+
+    <div class="reset-row">
+      <button id="btnResetBar">小節頭を今にリセット(手動同期)</button>
+    </div>
+  </div>
+</div>
+
+<audio id="outputEl" autoplay></audio>
+
+<script>
+(() => {
+  const els = {
+    midiSelect: document.getElementById('midiSelect'),
+    audioInSelect: document.getElementById('audioInSelect'),
+    audioOutSelect: document.getElementById('audioOutSelect'),
+    btnGrant: document.getElementById('btnGrant'),
+    btnConnect: document.getElementById('btnConnect'),
+    errorLine: document.getElementById('errorLine'),
+    setupPanel: document.getElementById('setupPanel'),
+    performPanel: document.getElementById('performPanel'),
+    syncLed: document.getElementById('syncLed'),
+    lcdTime: document.getElementById('lcdTime'),
+    lcdTag: document.getElementById('lcdTag'),
+    bpmNum: document.getElementById('bpmNum'),
+    posLabel: document.getElementById('posLabel'),
+    dialTicks: document.getElementById('dialTicks'),
+    dialProgress: document.getElementById('dialProgress'),
+    barsSelect: document.getElementById('barsSelect'),
+    stateLine: document.getElementById('stateLine'),
+    btnRec: document.getElementById('btnRec'),
+    btnPlay: document.getElementById('btnPlay'),
+    btnStop: document.getElementById('btnStop'),
+    btnClear: document.getElementById('btnClear'),
+    btnResetBar: document.getElementById('btnResetBar'),
+    outputEl: document.getElementById('outputEl'),
+  };
+
+  const PPQ = 24;
+  const PULSES_PER_BAR = PPQ * 4;
+
+  let midiAccess = null;
+  let midiInput = null;
+  let audioCtx = null;
+  let micStream = null;
+  let sourceNode = null;
+  let workletNode = null;
+  let destNode = null;
+
+  let clockTimestamps = [];
+  let pulseCount = 0;
+  let running = false;
+
+  let bars = 4;
+  let state = 'idle'; // idle | armed | recording | stopped | playing
+  let recordedChunks = [];
+  let recordTargetPulse = 0;
+  let audioBuffer = null;
+  let playbackSource = null;
+
+  let timerInterval = null;
+  let timerStartMs = 0;
+
+  function showError(msg){
+    els.errorLine.textContent = msg;
+    els.errorLine.classList.remove('hidden');
+  }
+
+  function buildTicks(){
+    els.dialTicks.innerHTML = '';
+    const total = bars * 4;
+    for (let i = 0; i < total; i++){
+      const angle = (i / total) * 2 * Math.PI;
+      const isBarStart = i % 4 === 0;
+      const rOuter = 46;
+      const rInner = isBarStart ? 40 : 42.5;
+      const x1 = 50 + rOuter * Math.cos(angle);
+      const y1 = 50 + rOuter * Math.sin(angle);
+      const x2 = 50 + rInner * Math.cos(angle);
+      const y2 = 50 + rInner * Math.sin(angle);
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+      line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+      line.setAttribute('class', 'tick' + (isBarStart ? ' bar-start' : ''));
+      els.dialTicks.appendChild(line);
+    }
+  }
+  buildTicks();
+
+  function updateDialProgress(){
+    const total = bars * PULSES_PER_BAR;
+    const pos = pulseCount % total;
+    const frac = total ? pos / total : 0;
+    els.dialProgress.setAttribute('stroke-dashoffset', String(100 - frac * 100));
+    els.dialProgress.classList.remove('rec','play','armed');
+    if (state === 'recording') els.dialProgress.classList.add('rec');
+    else if (state === 'playing') els.dialProgress.classList.add('play');
+    else if (state === 'armed') els.dialProgress.classList.add('armed');
+
+    const barIdx = Math.floor(pos / PULSES_PER_BAR) + 1;
+    const beatIdx = Math.floor((pos % PULSES_PER_BAR) / PPQ) + 1;
+    els.posLabel.textContent = `BAR ${barIdx}/${bars} ・ BEAT ${beatIdx}`;
+  }
+
+  function formatTime(ms){
+    const totalCs = Math.floor(ms / 10);
+    const cs = totalCs % 100;
+    const totalSec = Math.floor(totalCs / 100);
+    const sec = totalSec % 60;
+    const min = Math.floor(totalSec / 60);
+    return `${min}:${String(sec).padStart(2,'0')}:${String(cs).padStart(2,'0')}`;
+  }
+  function startTimer(){
+    timerStartMs = performance.now();
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+      els.lcdTime.textContent = formatTime(performance.now() - timerStartMs);
+    }, 30);
+  }
+  function freezeTimer(){
+    if (timerInterval){ clearInterval(timerInterval); timerInterval = null; }
+  }
+  function resetTimer(){
+    if (timerInterval){ clearInterval(timerInterval); timerInterval = null; }
+    els.lcdTime.textContent = '0:00:00';
+  }
+
+  els.btnGrant.addEventListener('click', async () => {
+    els.errorLine.classList.add('hidden');
+    try{
+      const tempStream = await navigator.mediaDevices.getUserMedia({audio:true});
+      tempStream.getTracks().forEach(t => t.stop());
+
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const ins = devices.filter(d => d.kind === 'audioinput');
+      const outs = devices.filter(d => d.kind === 'audiooutput');
+
+      els.audioInSelect.innerHTML = ins.map(d => `<option value="${d.deviceId}">${d.label || 'マイク/入力'}</option>`).join('');
+      els.audioOutSelect.innerHTML = outs.length
+        ? outs.map(d => `<option value="${d.deviceId}">${d.label || '出力'}</option>`).join('')
+        : '<option value="">既定の出力</option>';
+      els.audioInSelect.disabled = false;
+      els.audioOutSelect.disabled = false;
+
+      if (!navigator.requestMIDIAccess){
+        showError('このブラウザはWeb MIDI APIに対応していません。デスクトップ版Chromeをご利用ください。');
+        return;
+      }
+      midiAccess = await navigator.requestMIDIAccess({sysex:false});
+      const midiIns = Array.from(midiAccess.inputs.values());
+      if (midiIns.length === 0){
+        showError('MIDI入力デバイスが見つかりません。Circuitを接続してから再度お試しください。');
+      } else {
+        els.midiSelect.innerHTML = midiIns.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+        els.midiSelect.disabled = false;
+      }
+
+      els.btnGrant.classList.add('hidden');
+      els.btnConnect.classList.remove('hidden');
+    } catch(err){
+      showError('権限の取得に失敗しました: ' + err.message);
+    }
+  });
+
+  els.btnConnect.addEventListener('click', async () => {
+    els.errorLine.classList.add('hidden');
+    try{
+      await connect();
+      els.setupPanel.classList.add('hidden');
+      els.performPanel.classList.remove('hidden');
+    } catch(err){
+      showError('接続に失敗しました: ' + err.message);
+    }
+  });
+
+  async function connect(){
+    const midiId = els.midiSelect.value;
+    midiInput = midiAccess.inputs.get(midiId);
+    if (!midiInput) throw new Error('MIDI入力を取得できません');
+    midiInput.onmidimessage = onMidiMessage;
+
+    const audioInId = els.audioInSelect.value;
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio:{ deviceId: audioInId ? {exact: audioInId} : undefined, echoCancellation:false, noiseSuppression:false, autoGainControl:false }
+    });
+
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    sourceNode = audioCtx.createMediaStreamSource(micStream);
+
+    const workletCode = `
+      class RecorderProcessor extends AudioWorkletProcessor {
+        process(inputs){
+          const input = inputs[0];
+          if (input && input.length > 0 && input[0].length > 0){
+            const channels = input.map(ch => ch.slice());
+            this.port.postMessage(channels);
+          }
+          return true;
+        }
+      }
+      registerProcessor('recorder-processor', RecorderProcessor);
+    `;
+    const blobUrl = URL.createObjectURL(new Blob([workletCode], {type:'application/javascript'}));
+    await audioCtx.audioWorklet.addModule(blobUrl);
+    workletNode = new AudioWorkletNode(audioCtx, 'recorder-processor');
+    workletNode.port.onmessage = (e) => {
+      if (state === 'recording') recordedChunks.push(e.data);
+    };
+    sourceNode.connect(workletNode);
+
+    destNode = audioCtx.createMediaStreamDestination();
+    els.outputEl.srcObject = destNode.stream;
+    const audioOutId = els.audioOutSelect.value;
+    if (audioOutId && typeof els.outputEl.setSinkId === 'function'){
+      try { await els.outputEl.setSinkId(audioOutId); }
+      catch(e){ showError('出力デバイスの指定に失敗しました。既定の出力を使用します。'); }
+    }
+    await els.outputEl.play().catch(()=>{});
+  }
+
+  function onMidiMessage(e){
+    const status = e.data[0];
+    if (status === 0xF8){ handleClockPulse(); }
+    else if (status === 0xFA){ pulseCount = 0; running = true; setSyncUI(true); }
+    else if (status === 0xFB){ running = true; setSyncUI(true); }
+    else if (stat
