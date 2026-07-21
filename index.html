@@ -50,6 +50,7 @@
   .brand{ font-family:'Space Grotesk', sans-serif; font-weight:700; font-size:16px; }
   .brand-sub{ font-family:'JetBrains Mono', monospace; font-size:9px; letter-spacing:0.18em; color:var(--ink-dim); margin-top:2px; }
   .brand-right{ display:flex; align-items:center; gap:10px; }
+  .sync-mode-badge{ font-family:'JetBrains Mono', monospace; font-size:8px; letter-spacing:0.1em; color:var(--ink-dim); background:#f4f0e5; border:1px solid var(--line); border-radius:4px; padding:2px 6px; }
   .led-mini{ width:7px;height:7px;border-radius:50%; background:var(--red); opacity:0.25; transition:opacity .15s, box-shadow .15s; }
   .led-mini.on{ opacity:1; box-shadow:0 0 6px var(--red); }
   .learn-toggle{
@@ -85,7 +86,10 @@
 
   /* setup */
   .setup label{ display:block; font-family:'JetBrains Mono', monospace; font-size:10px; letter-spacing:0.1em; color:var(--ink-dim); margin-bottom:6px; text-transform:uppercase; }
-  .setup select{ width:100%; padding:10px; margin-bottom:12px; background:#f7f4ec; color:var(--ink); border:1px solid var(--line); border-radius:8px; font-family:'Noto Sans JP', sans-serif; font-size:13px; }
+  .setup select, .setup input[type="number"]{ width:100%; padding:10px; margin-bottom:12px; background:#f7f4ec; color:var(--ink); border:1px solid var(--line); border-radius:8px; font-family:'Noto Sans JP', sans-serif; font-size:13px; }
+  .mode-toggle{ display:flex; gap:8px; margin-bottom:12px; }
+  .mode-toggle button{ flex:1; padding:10px; border-radius:8px; border:1px solid var(--line); background:#f7f4ec; color:var(--ink-dim); font-family:'JetBrains Mono', monospace; font-size:11px; letter-spacing:0.04em; cursor:pointer; }
+  .mode-toggle button.active{ background:var(--ink); color:var(--body-a); border-color:var(--ink); }
   .btn-slab{ width:100%; cursor:pointer; padding:14px; border-radius:10px; border:1px solid var(--shell-edge); background:linear-gradient(180deg,#f7f4ec,#e6e0cf); color:var(--ink); font-family:'Space Grotesk', sans-serif; font-weight:700; font-size:13px; box-shadow:0 2px 0 rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.7); }
   .btn-slab:active{ transform:translateY(1px); }
   .error{ color:var(--red); font-size:11px; margin-top:10px; font-family:'JetBrains Mono', monospace; }
@@ -113,7 +117,13 @@
   .dial-center{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; pointer-events:none; }
   .dial-track-label{ font-family:'JetBrains Mono', monospace; font-size:11px; color:var(--ink-dim); letter-spacing:0.1em; margin-bottom:4px; }
   .dial-bpm{ font-family:'JetBrains Mono', monospace; font-weight:700; font-size:30px; line-height:1; }
+  .dial-bpm-edit{ display:flex; align-items:center; gap:6px; pointer-events:auto; }
+  .bpm-step{ pointer-events:auto; width:22px; height:22px; border-radius:50%; border:1px solid var(--line); background:#f4f0e5; color:var(--ink-dim); font-family:'JetBrains Mono', monospace; font-size:14px; cursor:pointer; line-height:1; }
+  .bpm-input{ width:70px; text-align:center; font-family:'JetBrains Mono', monospace; font-weight:700; font-size:26px; border:none; border-bottom:1px dashed var(--line); background:transparent; color:var(--ink); pointer-events:auto; }
+  .bpm-input::-webkit-outer-spin-button, .bpm-input::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
   .dial-bpm-unit{ font-family:'JetBrains Mono', monospace; font-size:9px; color:var(--ink-dim); letter-spacing:0.2em; margin-top:3px; }
+  .tap-btn{ pointer-events:auto; margin-top:6px; font-family:'JetBrains Mono', monospace; font-size:9px; letter-spacing:0.12em; padding:4px 12px; border-radius:12px; border:1px solid var(--line); background:#f4f0e5; color:var(--ink-dim); cursor:pointer; }
+  .tap-btn:active{ background:var(--amber); color:#2a1a06; }
   .dial-pos{ font-family:'JetBrains Mono', monospace; font-size:10px; color:var(--ink-dim); margin-top:7px; }
 
   .bars-row{ display:flex; gap:6px; justify-content:center; margin:12px 0 4px; }
@@ -200,6 +210,7 @@
       <div class="brand-sub">4-TRACK / CIRCUIT CLOCK SYNC</div>
     </div>
     <div class="brand-right">
+      <span class="sync-mode-badge hidden" id="syncModeBadge">EXT</span>
       <button class="learn-toggle" id="btnMidiLearn">MIDI LEARN</button>
       <span class="led-mini" id="syncLed"></span>
     </div>
@@ -209,8 +220,20 @@
   <div class="hairline"></div>
 
   <div class="setup" id="setupPanel">
-    <label for="midiSelect">MIDI入力(クロックのマスター)</label>
+    <label>同期モード</label>
+    <div class="mode-toggle" id="syncModeToggle">
+      <button data-mode="external" class="active">外部クロック(Circuit等)</button>
+      <button data-mode="standalone">スタンドアロン(内部クロック)</button>
+    </div>
+
+    <div class="hidden" id="bpmSetupRow">
+      <label for="bpmSetupInput">BPM(スタンドアロン時のテンポ)</label>
+      <input type="number" id="bpmSetupInput" min="20" max="300" value="120">
+    </div>
+
+    <label for="midiSelect" id="midiSelectLabel">MIDI入力(クロックのマスター)</label>
     <select id="midiSelect" disabled><option>権限を許可してください</option></select>
+
     <label for="audioInSelect">オーディオ入力</label>
     <select id="audioInSelect" disabled><option>権限を許可してください</option></select>
     <label for="audioOutSelect">オーディオ出力</label>
@@ -239,7 +262,13 @@
           <div class="dial-center">
             <div class="dial-track-label" id="dialTrackLabel">TRACK A</div>
             <div class="dial-bpm" id="bpmNum">---</div>
+            <div class="dial-bpm-edit hidden" id="bpmEditWrap">
+              <button class="bpm-step" id="bpmDown">−</button>
+              <input type="number" id="bpmInput" class="bpm-input" min="20" max="300" value="120">
+              <button class="bpm-step" id="bpmUp">+</button>
+            </div>
             <div class="dial-bpm-unit">BPM</div>
+            <button class="tap-btn hidden" id="btnTap">TAP</button>
             <div class="dial-pos" id="posLabel">BAR – / – ・ BEAT –</div>
           </div>
         </div>
@@ -315,6 +344,7 @@
   try {
   const els = {
     midiSelect: document.getElementById('midiSelect'),
+    midiSelectLabel: document.getElementById('midiSelectLabel'),
     audioInSelect: document.getElementById('audioInSelect'),
     audioOutSelect: document.getElementById('audioOutSelect'),
     btnGrant: document.getElementById('btnGrant'),
@@ -323,9 +353,18 @@
     setupPanel: document.getElementById('setupPanel'),
     performPanel: document.getElementById('performPanel'),
     syncLed: document.getElementById('syncLed'),
+    syncModeBadge: document.getElementById('syncModeBadge'),
+    syncModeToggle: document.getElementById('syncModeToggle'),
+    bpmSetupRow: document.getElementById('bpmSetupRow'),
+    bpmSetupInput: document.getElementById('bpmSetupInput'),
     lcdTime: document.getElementById('lcdTime'),
     lcdTag: document.getElementById('lcdTag'),
     bpmNum: document.getElementById('bpmNum'),
+    bpmEditWrap: document.getElementById('bpmEditWrap'),
+    bpmInput: document.getElementById('bpmInput'),
+    bpmUp: document.getElementById('bpmUp'),
+    bpmDown: document.getElementById('bpmDown'),
+    btnTap: document.getElementById('btnTap'),
     posLabel: document.getElementById('posLabel'),
     dialTicks: document.getElementById('dialTicks'),
     dialProgress: document.getElementById('dialProgress'),
@@ -368,6 +407,80 @@
   let pulseCount = 0;
   let running = false;
   let recordedChunks = [];
+
+  // ---------- sync mode / standalone internal clock ----------
+  let syncMode = 'external'; // 'external' | 'standalone'
+  let standaloneBpm = 120;
+  let internalClockTimer = null;
+  let internalClockNextTime = 0;
+  let tapTimes = [];
+
+  els.syncModeToggle.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-mode]');
+    if (!btn) return;
+    syncMode = btn.dataset.mode;
+    [...els.syncModeToggle.children].forEach(b => b.classList.toggle('active', b === btn));
+    els.bpmSetupRow.classList.toggle('hidden', syncMode !== 'standalone');
+    els.midiSelectLabel.textContent = syncMode === 'standalone' ? 'MIDI入力(コントローラー・任意)' : 'MIDI入力(クロックのマスター)';
+    console.log('[SYNC LOOPER] Setup sync mode changed to:', syncMode);
+  });
+
+  function pulseIntervalMs(){ return 60000 / standaloneBpm / PPQ; }
+
+  function scheduleInternalPulse(){
+    const now = performance.now();
+    const delay = Math.max(0, internalClockNextTime - now);
+    internalClockTimer = setTimeout(() => {
+      handleClockPulse();
+      internalClockNextTime += pulseIntervalMs();
+      scheduleInternalPulse();
+    }, delay);
+  }
+
+  function startInternalClock(){
+    console.log('[SYNC LOOPER] Starting internal clock at', standaloneBpm, 'BPM');
+    pulseCount = 0;
+    running = true;
+    setSyncUI(true);
+    internalClockNextTime = performance.now();
+    scheduleInternalPulse();
+  }
+
+  function updateBpmModeUI(){
+    const standalone = syncMode === 'standalone';
+    els.bpmNum.classList.toggle('hidden', standalone);
+    els.bpmEditWrap.classList.toggle('hidden', !standalone);
+    els.btnTap.classList.toggle('hidden', !standalone);
+    els.syncModeBadge.classList.remove('hidden');
+    els.syncModeBadge.textContent = standalone ? 'INTERNAL' : 'EXT CLOCK';
+  }
+
+  els.bpmInput.addEventListener('change', () => {
+    let v = parseFloat(els.bpmInput.value);
+    if (!isFinite(v) || v <= 0) v = standaloneBpm;
+    v = Math.min(300, Math.max(20, v));
+    standaloneBpm = v;
+    els.bpmInput.value = v;
+    console.log('[SYNC LOOPER] Standalone BPM set to', v);
+  });
+  els.bpmUp.addEventListener('click', () => { standaloneBpm = Math.min(300, standaloneBpm + 1); els.bpmInput.value = standaloneBpm; });
+  els.bpmDown.addEventListener('click', () => { standaloneBpm = Math.max(20, standaloneBpm - 1); els.bpmInput.value = standaloneBpm; });
+
+  els.btnTap.addEventListener('click', () => {
+    const now = performance.now();
+    if (tapTimes.length && now - tapTimes[tapTimes.length-1] > 2000) tapTimes = [];
+    tapTimes.push(now);
+    if (tapTimes.length > 8) tapTimes.shift();
+    if (tapTimes.length >= 2){
+      const intervals = [];
+      for (let i=1;i<tapTimes.length;i++) intervals.push(tapTimes[i]-tapTimes[i-1]);
+      const avg = intervals.reduce((a,b)=>a+b,0)/intervals.length;
+      const bpm = Math.min(300, Math.max(20, Math.round((60000/avg)*10)/10));
+      standaloneBpm = bpm;
+      els.bpmInput.value = bpm;
+      console.log('[SYNC LOOPER] Tap tempo ->', bpm, 'BPM');
+    }
+  });
 
   const tracks = ['A','B','C','D'].map(id => ({
     id, bars:4, buffer:null, originalBuffer:null, reversed:false,
@@ -475,19 +588,23 @@
 
       if (!navigator.requestMIDIAccess){
         console.error('[SYNC LOOPER] navigator.requestMIDIAccess is not available in this browser');
-        showError('このブラウザはWeb MIDI APIに対応していません。デスクトップ版Chromeをご利用ください。');
-        return;
-      }
-      console.log('[SYNC LOOPER] requestMIDIAccess start');
-      midiAccess = await navigator.requestMIDIAccess({sysex:false});
-      console.log('[SYNC LOOPER] requestMIDIAccess success', midiAccess);
-      const midiIns = Array.from(midiAccess.inputs.values());
-      console.log('[SYNC LOOPER] MIDI input count=', midiIns.length, midiIns.map(m => m.name));
-      if (midiIns.length === 0){
-        showError('MIDI入力デバイスが見つかりません。Circuitを接続してから再度お試しください。');
-      } else {
-        els.midiSelect.innerHTML = midiIns.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+        els.midiSelect.innerHTML = '<option value="">なし(このブラウザはWeb MIDI未対応)</option>';
         els.midiSelect.disabled = false;
+      } else {
+        console.log('[SYNC LOOPER] requestMIDIAccess start');
+        midiAccess = await navigator.requestMIDIAccess({sysex:false});
+        console.log('[SYNC LOOPER] requestMIDIAccess success', midiAccess);
+        const midiIns = Array.from(midiAccess.inputs.values());
+        console.log('[SYNC LOOPER] MIDI input count=', midiIns.length, midiIns.map(m => m.name));
+        const noneOption = '<option value="">なし(MIDIを使わない)</option>';
+        if (midiIns.length === 0){
+          els.midiSelect.innerHTML = noneOption;
+          els.midiSelect.disabled = false;
+          if (syncMode === 'external') showError('MIDI入力デバイスが見つかりません。外部クロックモードを使う場合はCircuit等を接続してから再度お試しください。');
+        } else {
+          els.midiSelect.innerHTML = noneOption + midiIns.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+          els.midiSelect.disabled = false;
+        }
       }
       els.btnGrant.classList.add('hidden'); els.btnConnect.classList.remove('hidden');
       console.log('[SYNC LOOPER] Setup flow complete. Connect button shown.');
@@ -501,10 +618,24 @@
 
   els.btnConnect.addEventListener('click', async () => {
     els.errorLine.classList.add('hidden');
+    if (syncMode === 'external' && !els.midiSelect.value){
+      showError('外部クロックモードではMIDI入力を選択してください。スタンドアロンモードに切り替えることもできます。');
+      return;
+    }
+    if (syncMode === 'standalone'){
+      let v = parseFloat(els.bpmSetupInput.value);
+      if (!isFinite(v) || v <= 0) v = 120;
+      standaloneBpm = Math.min(300, Math.max(20, v));
+    }
     try{
       await connect();
       els.setupPanel.classList.add('hidden');
       els.performPanel.classList.remove('hidden');
+      updateBpmModeUI();
+      if (syncMode === 'standalone'){
+        els.bpmInput.value = standaloneBpm;
+        startInternalClock();
+      }
       buildTicks(); updateDialProgress(); renderTrackList(); renderTimeline(); renderEffectsGrid(); renderMappingsList();
       requestAnimationFrame(playheadLoop);
     } catch(err){ showError('接続に失敗しました: ' + err.message); }
@@ -570,9 +701,20 @@
 
   async function connect(){
     const midiId = els.midiSelect.value;
-    midiInput = midiAccess.inputs.get(midiId);
-    if (!midiInput) throw new Error('MIDI入力を取得できません');
-    midiInput.onmidimessage = onMidiMessage;
+    if (syncMode === 'external'){
+      midiInput = midiAccess ? midiAccess.inputs.get(midiId) : null;
+      if (!midiInput) throw new Error('MIDI入力を取得できません');
+      midiInput.onmidimessage = onMidiMessage;
+      console.log('[SYNC LOOPER] External clock mode: attached to MIDI input', midiInput.name);
+    } else {
+      if (midiId && midiAccess){
+        midiInput = midiAccess.inputs.get(midiId) || null;
+        if (midiInput){ midiInput.onmidimessage = onMidiMessage; console.log('[SYNC LOOPER] Standalone mode: MIDI controller attached for mapping only', midiInput.name); }
+      } else {
+        midiInput = null;
+        console.log('[SYNC LOOPER] Standalone mode: no MIDI controller selected');
+      }
+    }
 
     const audioInId = els.audioInSelect.value;
     micStream = await navigator.mediaDevices.getUserMedia({
@@ -608,7 +750,6 @@
     tracks.forEach(t => {
       t.fxChain = buildTrackFxChain();
       t.fxChain.output.connect(masterGain);
-      // re-apply any persisted fx toggle state to the freshly built nodes
       applyTrackFx(t, 'reverb'); applyTrackFx(t, 'delay'); applyTrackFx(t, 'filter'); applyTrackFx(t, 'tape');
     });
 
@@ -625,10 +766,14 @@
   // ---------- MIDI clock + control input ----------
   function onMidiMessage(e){
     const status = e.data[0];
-    if (status === 0xF8){ handleClockPulse(); return; }
-    if (status === 0xFA){ pulseCount = 0; running = true; setSyncUI(true); return; }
-    if (status === 0xFB){ running = true; setSyncUI(true); return; }
-    if (status === 0xFC){ running = false; return; }
+    if (syncMode === 'external'){
+      if (status === 0xF8){ handleClockPulse(); return; }
+      if (status === 0xFA){ pulseCount = 0; running = true; setSyncUI(true); return; }
+      if (status === 0xFB){ running = true; setSyncUI(true); return; }
+      if (status === 0xFC){ running = false; return; }
+    } else {
+      if (status === 0xF8 || status === 0xFA || status === 0xFB || status === 0xFC) return;
+    }
 
     const statusType = status & 0xF0;
     if (statusType === 0x90 || statusType === 0xB0){
@@ -655,11 +800,15 @@
   function setSyncUI(on){ els.syncLed.classList.toggle('on', on); }
 
   function handleClockPulse(){
-    const now = performance.now();
-    clockTimestamps.push(now);
-    if (clockTimestamps.length > 48) clockTimestamps.shift();
-    updateBpm();
-    if (!running){ running = true; setSyncUI(true); }
+    if (syncMode === 'external'){
+      const now = performance.now();
+      clockTimestamps.push(now);
+      if (clockTimestamps.length > 48) clockTimestamps.shift();
+      updateBpm();
+      if (!running){ running = true; setSyncUI(true); }
+    } else {
+      els.bpmNum.textContent = standaloneBpm.toFixed(1);
+    }
     pulseCount++;
 
     for (const t of tracks){
@@ -762,7 +911,7 @@
     const t = getSelected();
     if (t.state === 'rec-armed'){ t.state = t.buffer ? 'stopped' : 'empty'; updateTransportUI(); renderTrackList(); els.stateLine.textContent = `TRACK ${t.id} 待機中 — REC で次の小節頭から録音`; els.lcdTag.textContent = 'READY'; return; }
     if (!(t.state === 'empty' || t.state === 'stopped')) return;
-    if (!running){ showError('MIDIクロックを受信していません。Circuitを再生状態にしてください。'); return; }
+    if (!running){ showError('クロックが動作していません。接続設定を確認してください。'); return; }
     if (t.state === 'stopped') stopPlayback(t);
     t.state = 'rec-armed';
     updateTransportUI(); renderTrackList();
@@ -1053,7 +1202,8 @@
     }
     ctx2d.strokeStyle = '#c1b9a6';
     ctx2d.lineWidth = 1;
-    const barDur = (60/parseFloat(els.bpmNum.textContent || 120))*4;
+    const displayedBpm = syncMode === 'standalone' ? standaloneBpm : parseFloat(els.bpmNum.textContent || 120);
+    const barDur = (60/displayedBpm)*4;
     if (barDur > 0 && isFinite(barDur)){
       const barCount = Math.round(t.buffer.duration / barDur);
       for (let b=0; b<=barCount; b++){
