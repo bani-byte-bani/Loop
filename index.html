@@ -252,6 +252,14 @@
 
 <script>
 (() => {
+  console.log('[SYNC LOOPER] Script init start');
+  window.addEventListener('error', (e) => {
+    console.error('[SYNC LOOPER] window error event:', e.message, e.error);
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    console.error('[SYNC LOOPER] unhandled promise rejection:', e.reason);
+  });
+  try {
   const els = {
     midiSelect: document.getElementById('midiSelect'),
     audioInSelect: document.getElementById('audioInSelect'),
@@ -284,6 +292,13 @@
     timelineEmpty: document.getElementById('timelineEmpty'),
     timelineTrackLabel: document.getElementById('timelineTrackLabel'),
   };
+
+  console.log('[SYNC LOOPER] DOM elements resolved:', els);
+  const missingEls = Object.entries(els).filter(([key, val]) => !val).map(([key]) => key);
+  if (missingEls.length){
+    console.error('[SYNC LOOPER] Missing DOM elements:', missingEls);
+    alert('[SYNC LOOPER] 初期化エラー: 以下のIDの要素が見つかりません -> ' + missingEls.join(', '));
+  }
 
   const PPQ = 24;
   const PULSES_PER_BAR = PPQ * 4;
@@ -336,4 +351,523 @@
     const pos = pulseCount % total;
     const frac = total ? pos / total : 0;
     els.dialProgress.setAttribute('stroke-dashoffset', String(100 - frac * 100));
-    els.dialProgress.classList.
+    els.dialProgress.classList.remove('rec','play','armed');
+    if (t.state === 'recording') els.dialProgress.classList.add('rec');
+    else if (t.state === 'playing') els.dialProgress.classList.add('play');
+    else if (t.state === 'rec-armed' || t.state === 'play-armed') els.dialProgress.classList.add('armed');
+
+    const barIdx = Math.floor(pos / PULSES_PER_BAR) + 1;
+    const beatIdx = Math.floor((pos % PULSES_PER_BAR) / PPQ) + 1;
+    els.posLabel.textContent = `BAR ${barIdx}/${t.bars} ・ BEAT ${beatIdx}`;
+    els.dialTrackLabel.textContent = `TRACK ${t.id}`;
+  }
+
+  // ---------- LCD timer ----------
+  let timerInterval = null, timerStartMs = 0;
+  function formatTime(ms){
+    const totalCs = Math.floor(ms/10), cs = totalCs%100;
+    const totalSec = Math.floor(totalCs/100), sec = totalSec%60, min = Math.floor(totalSec/60);
+    return `${min}:${String(sec).padStart(2,'0')}:${String(cs).padStart(2,'0')}`;
+  }
+  function startTimer(){
+    timerStartMs = performance.now();
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(() => { els.lcdTime.textContent = formatTime(performance.now()-timerStartMs); }, 30);
+  }
+  function freezeTimer(){ if (timerInterval){ clearInterval(timerInterval); timerInterval=null; } }
+  function resetTimerDisplay(){ freezeTimer(); els.lcdTime.textContent = '0:00:00'; }
+
+  // ---------- setup / connect ----------
+  console.log('[SYNC LOOPER] Attaching btnGrant click listener. Element:', els.btnGrant);
+  els.btnGrant.addEventListener('click', async () => {
+    console.log('[SYNC LOOPER] Button clicked');
+    els.errorLine.classList.add('hidden');
+    try{
+      console.log('[SYNC LOOPER] getUserMedia start');
+      const tempStream = await navigator.mediaDevices.getUserMedia({audio:true});
+      console.log('[SYNC LOOPER] getUserMedia success', tempStream);
+      tempStream.getTracks().forEach(t => t.stop());
+
+      console.log('[SYNC LOOPER] enumerateDevices start');
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      console.log('[SYNC LOOPER] enumerateDevices success. count=', devices.length, devices);
+      const ins = devices.filter(d => d.kind === 'audioinput');
+      const outs = devices.filter(d => d.kind === 'audiooutput');
+      console.log('[SYNC LOOPER] audioinput count=', ins.length, 'audiooutput count=', outs.length);
+
+      els.audioInSelect.innerHTML = ins.map(d => `<option value="${d.deviceId}">${d.label || 'マイク/入力'}</option>`).join('');
+      els.audioOutSelect.innerHTML = outs.length ? outs.map(d => `<option value="${d.deviceId}">${d.label || '出力'}</option>`).join('') : '<option value="">既定の出力</option>';
+      els.audioInSelect.disabled = false; els.audioOutSelect.disabled = false;
+      console.log('[SYNC LOOPER] Audio select elements populated');
+
+      if (!navigator.requestMIDIAccess){
+        console.error('[SYNC LOOPER] navigator.requestMIDIAccess is not available in this browser');
+        showError('このブラウザはWeb MIDI APIに対応していません。デスクトップ版Chromeをご利用ください。');
+        return;
+      }
+      console.log('[SYNC LOOPER] requestMIDIAccess start');
+      midiAccess = await navigator.requestMIDIAccess({sysex:false});
+      console.log('[SYNC LOOPER] requestMIDIAccess success', midiAccess);
+      const midiIns = Array.from(midiAccess.inputs.values());
+      console.log('[SYNC LOOPER] MIDI input count=', midiIns.length, midiIns.map(m => m.name));
+      if (midiIns.length === 0){
+        showError('MIDI入力デバイスが見つかりません。Circuitを接続してから再度お試しください。');
+      } else {
+        els.midiSelect.innerHTML = midiIns.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+        els.midiSelect.disabled = false;
+      }
+      els.btnGrant.classList.add('hidden'); els.btnConnect.classList.remove('hidden');
+      console.log('[SYNC LOOPER] Setup flow complete. Connect button shown.');
+    } catch(err){
+      console.error('[SYNC LOOPER] Error during setup flow:', err.name, err.message, err);
+      showError('権限の取得に失敗しました: ' + err.name + ' - ' + err.message);
+      alert('[SYNC LOOPER] エラー発生: ' + err.name + ' - ' + err.message);
+    }
+  });
+  console.log('[SYNC LOOPER] btnGrant click listener attached successfully');
+
+  els.btnConnect.addEventListener('click', async () => {
+    els.errorLine.classList.add('hidden');
+    try{
+      await connect();
+      els.setupPanel.classList.add('hidden');
+      els.performPanel.classList.remove('hidden');
+      buildTicks(); updateDialProgress(); renderTrackList(); renderTimeline();
+      requestAnimationFrame(playheadLoop);
+    } catch(err){ showError('接続に失敗しました: ' + err.message); }
+  });
+
+  function makeStage(buildWetChain){
+    const input = audioCtx.createGain();
+    const dry = audioCtx.createGain(); dry.gain.value = 1;
+    const wet = audioCtx.createGain(); wet.gain.value = 0;
+    const output = audioCtx.createGain();
+    input.connect(dry); dry.connect(output);
+    const wetOut = buildWetChain(input);
+    wetOut.connect(wet); wet.connect(output);
+    return { input, output, setWet(w){ wet.gain.value = w; } };
+  }
+  function makeImpulse(ctx, duration, decay){
+    const rate = ctx.sampleRate, length = Math.floor(rate*duration);
+    const impulse = ctx.createBuffer(2, length, rate);
+    for (let ch=0; ch<2; ch++){
+      const data = impulse.getChannelData(ch);
+      for (let i=0;i<length;i++){ data[i] = (Math.random()*2-1) * Math.pow(1 - i/length, decay); }
+    }
+    return impulse;
+  }
+  function makeSaturationCurve(amount){
+    const n = 4096, curve = new Float32Array(n), k = amount * 60 + 1;
+    for (let i=0;i<n;i++){ const x = i*2/n - 1; curve[i] = (1+k)*x/(1+k*Math.abs(x)); }
+    return curve;
+  }
+
+  async function connect(){
+    const midiId = els.midiSelect.value;
+    midiInput = midiAccess.inputs.get(midiId);
+    if (!midiInput) throw new Error('MIDI入力を取得できません');
+    midiInput.onmidimessage = onMidiMessage;
+
+    const audioInId = els.audioInSelect.value;
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio:{ deviceId: audioInId ? {exact:audioInId} : undefined, echoCancellation:false, noiseSuppression:false, autoGainControl:false }
+    });
+
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    sourceNode = audioCtx.createMediaStreamSource(micStream);
+
+    const workletCode = `
+      class RecorderProcessor extends AudioWorkletProcessor {
+        process(inputs){
+          const input = inputs[0];
+          if (input && input.length > 0 && input[0].length > 0){
+            this.port.postMessage(input.map(ch => ch.slice()));
+          }
+          return true;
+        }
+      }
+      registerProcessor('recorder-processor', RecorderProcessor);
+    `;
+    const blobUrl = URL.createObjectURL(new Blob([workletCode], {type:'application/javascript'}));
+    await audioCtx.audioWorklet.addModule(blobUrl);
+    workletNode = new AudioWorkletNode(audioCtx, 'recorder-processor');
+    workletNode.port.onmessage = (e) => {
+      const t = getSelected();
+      if (t.state === 'recording') recordedChunks.push(e.data);
+    };
+    sourceNode.connect(workletNode);
+
+    // ---- effects bus ----
+    masterMix = audioCtx.createGain();
+    filterNode = audioCtx.createBiquadFilter();
+    filterNode.type = 'lowpass';
+    filterNode.frequency.value = 20000;
+    delayStage = makeStage((input) => {
+      const delay = audioCtx.createDelay(1.5);
+      delay.delayTime.value = 0.27;
+      const fb = audioCtx.createGain(); fb.gain.value = 0.35;
+      input.connect(delay); delay.connect(fb); fb.connect(delay);
+      return delay;
+    });
+    reverbStage = makeStage((input) => {
+      const conv = audioCtx.createConvolver();
+      conv.buffer = makeImpulse(audioCtx, 2.2, 3.2);
+      input.connect(conv);
+      return conv;
+    });
+    tapeStage = makeStage((input) => {
+      const shaper = audioCtx.createWaveShaper();
+      shaper.curve = makeSaturationCurve(0.35);
+      shaper.oversample = '4x';
+      const lp = audioCtx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 5500;
+      input.connect(shaper); shaper.connect(lp);
+      return lp;
+    });
+    masterGain = audioCtx.createGain();
+
+    masterMix.connect(filterNode);
+    filterNode.connect(delayStage.input);
+    delayStage.output.connect(reverbStage.input);
+    reverbStage.output.connect(tapeStage.input);
+    tapeStage.output.connect(masterGain);
+
+    destNode = audioCtx.createMediaStreamDestination();
+    masterGain.connect(destNode);
+    els.outputEl.srcObject = destNode.stream;
+    const audioOutId = els.audioOutSelect.value;
+    if (audioOutId && typeof els.outputEl.setSinkId === 'function'){
+      try { await els.outputEl.setSinkId(audioOutId); } catch(e){ showError('出力デバイスの指定に失敗しました。既定の出力を使用します。'); }
+    }
+    await els.outputEl.play().catch(()=>{});
+  }
+
+  // ---------- MIDI clock ----------
+  function onMidiMessage(e){
+    const status = e.data[0];
+    if (status === 0xF8) handleClockPulse();
+    else if (status === 0xFA){ pulseCount = 0; running = true; setSyncUI(true); }
+    else if (status === 0xFB){ running = true; setSyncUI(true); }
+    else if (status === 0xFC){ running = false; }
+  }
+  function setSyncUI(on){ els.syncLed.classList.toggle('on', on); }
+
+  function handleClockPulse(){
+    const now = performance.now();
+    clockTimestamps.push(now);
+    if (clockTimestamps.length > 48) clockTimestamps.shift();
+    updateBpm();
+    if (!running){ running = true; setSyncUI(true); }
+    pulseCount++;
+
+    for (const t of tracks){
+      const posInBar = pulseCount % PULSES_PER_BAR;
+      if (t.state === 'rec-armed' && posInBar === 0){
+        startRecording(t);
+      } else if (t.state === 'recording' && pulseCount >= t.recordTargetPulse){
+        stopRecordingAndPlay(t);
+      } else if (t.state === 'play-armed' && posInBar === 0){
+        startPlayback(t);
+      }
+    }
+    updateDialProgress();
+  }
+
+  function updateBpm(){
+    if (clockTimestamps.length < 2) return;
+    let sum = 0;
+    for (let i=1;i<clockTimestamps.length;i++) sum += clockTimestamps[i]-clockTimestamps[i-1];
+    const avg = sum/(clockTimestamps.length-1);
+    const bpm = 60000/(avg*PPQ);
+    if (isFinite(bpm)) els.bpmNum.textContent = bpm.toFixed(1);
+  }
+
+  // ---------- bars ----------
+  els.barsSelect.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-bars]');
+    const t = getSelected();
+    if (!btn || t.state !== 'empty') return;
+    t.bars = parseInt(btn.dataset.bars, 10);
+    [...els.barsSelect.children].forEach(b => b.classList.toggle('active', b === btn));
+    buildTicks(); updateDialProgress();
+  });
+
+  // ---------- recording / playback per track ----------
+  function startRecording(t){
+    recordedChunks = [];
+    t.state = 'recording';
+    t.recordTargetPulse = pulseCount + t.bars * PULSES_PER_BAR;
+    updateTransportUI(); renderTrackList();
+    els.stateLine.textContent = `TRACK ${t.id} 録音中 — ${t.bars}小節`;
+    els.lcdTag.textContent = 'REC';
+    startTimer();
+  }
+
+  function stopRecordingAndPlay(t){
+    if (t.id === selectedId) freezeTimer();
+    const chunks = recordedChunks;
+    recordedChunks = [];
+    if (chunks.length === 0){
+      t.state = 'empty';
+      updateTransportUI(); renderTrackList();
+      if (t.id === selectedId){ els.stateLine.textContent = '録音データがありませんでした。入力レベルを確認してください。'; els.lcdTag.textContent = 'READY'; }
+      return;
+    }
+    const numChannels = chunks[0].length;
+    const sampleRate = audioCtx.sampleRate;
+    const totalLength = chunks.reduce((sum,c) => sum + c[0].length, 0);
+    const buffer = audioCtx.createBuffer(numChannels, totalLength, sampleRate);
+    for (let ch=0; ch<numChannels; ch++){
+      const data = buffer.getChannelData(ch);
+      let offset = 0;
+      for (const c of chunks){ data.set(c[ch], offset); offset += c[ch].length; }
+    }
+    t.buffer = buffer;
+    t.originalBuffer = buffer;
+    t.reversed = false;
+    startPlayback(t);
+    renderTrackList();
+    if (t.id === selectedId) renderTimeline();
+  }
+
+  function startPlayback(t){
+    if (!t.buffer) return;
+    if (t.source){ try{ t.source.stop(); }catch(e){} }
+    const src = audioCtx.createBufferSource();
+    src.buffer = t.buffer;
+    src.loop = true;
+    src.connect(masterMix);
+    src.start();
+    t.source = src;
+    t.playStartTime = audioCtx.currentTime;
+    t.state = 'playing';
+    updateTransportUI(); renderTrackList();
+    if (t.id === selectedId){
+      els.stateLine.textContent = `TRACK ${t.id} ループ再生中`;
+      els.lcdTag.textContent = 'PLAY';
+      els.lcdTime.textContent = formatTime(t.buffer.duration*1000);
+    }
+  }
+
+  function stopPlayback(t){
+    if (t.source){ try{ t.source.stop(); }catch(e){} t.source = null; }
+    t.state = 'stopped';
+    updateTransportUI(); renderTrackList();
+    if (t.id === selectedId){ els.stateLine.textContent = `TRACK ${t.id} 停止中 — PLAYで再生 / CLEARで削除`; els.lcdTag.textContent = 'STOP'; }
+  }
+
+  // ---------- transport ----------
+  els.btnRec.addEventListener('click', () => {
+    const t = getSelected();
+    if (t.state === 'rec-armed'){ t.state = t.buffer ? 'stopped' : 'empty'; updateTransportUI(); renderTrackList(); els.stateLine.textContent = `TRACK ${t.id} 待機中 — REC で次の小節頭から録音`; els.lcdTag.textContent = 'READY'; return; }
+    if (!(t.state === 'empty' || t.state === 'stopped')) return;
+    if (!running){ showError('MIDIクロックを受信していません。Circuitを再生状態にしてください。'); return; }
+    if (t.state === 'stopped') stopPlayback(t);
+    t.state = 'rec-armed';
+    updateTransportUI(); renderTrackList();
+    els.stateLine.textContent = `TRACK ${t.id} 録音待機中 — 次の小節頭で開始します`;
+    els.lcdTag.textContent = 'ARMED';
+  });
+
+  els.btnPlay.addEventListener('click', () => {
+    const t = getSelected();
+    if (t.state === 'play-armed'){ t.state = 'stopped'; updateTransportUI(); renderTrackList(); return; }
+    if (t.state !== 'stopped') return;
+    if (running){
+      t.state = 'play-armed';
+      updateTransportUI(); renderTrackList();
+      els.stateLine.textContent = `TRACK ${t.id} 再生待機中 — 次の小節頭で開始します`;
+    } else {
+      startPlayback(t);
+    }
+  });
+
+  els.btnStop.addEventListener('click', () => {
+    const t = getSelected();
+    if (t.state === 'playing') stopPlayback(t);
+  });
+
+  els.btnClear.addEventListener('click', () => {
+    const t = getSelected();
+    if (t.source){ try{ t.source.stop(); }catch(e){} t.source = null; }
+    t.buffer = null; t.originalBuffer = null; t.reversed = false;
+    t.state = 'empty';
+    if (t.id === selectedId) resetTimerDisplay();
+    updateTransportUI(); renderTrackList(); renderTimeline();
+    els.stateLine.textContent = `TRACK ${t.id} 待機中 — REC で次の小節頭から録音`;
+    els.lcdTag.textContent = 'READY';
+  });
+
+  els.btnResetBar.addEventListener('click', () => { pulseCount = 0; updateDialProgress(); });
+
+  function updateTransportUI(){
+    const t = getSelected();
+    els.btnRec.classList.toggle('armed', t.state === 'rec-armed');
+    els.btnRec.classList.toggle('recording', t.state === 'recording');
+    els.btnRec.disabled = (t.state === 'recording');
+    els.btnPlay.classList.toggle('armed', t.state === 'play-armed');
+    els.btnPlay.classList.toggle('playing', t.state === 'playing');
+    els.btnPlay.disabled = !(t.state === 'stopped' || t.state === 'play-armed');
+    els.btnStop.disabled = (t.state !== 'playing');
+    els.btnClear.disabled = !(t.buffer || t.state === 'recording' || t.state === 'rec-armed');
+    [...els.barsSelect.children].forEach(b => {
+      b.disabled = (t.state !== 'empty');
+      b.classList.toggle('active', parseInt(b.dataset.bars,10) === t.bars);
+    });
+    document.getElementById('fx-reverse-check');
+  }
+
+  // ---------- track list UI ----------
+  function trackMiniBars(t){
+    if (!t.buffer){ return Array.from({length:8}, () => `<span></span>`).join(''); }
+    const data = t.buffer.getChannelData(0);
+    const step = Math.floor(data.length/8) || 1;
+    let out = '';
+    for (let i=0;i<8;i++){
+      let peak = 0;
+      const start = i*step;
+      for (let j=0;j<step;j++){ const v = Math.abs(data[start+j] || 0); if (v>peak) peak = v; }
+      const h = Math.max(15, Math.min(100, peak*140));
+      out += `<span class="filled" style="height:${h}%"></span>`;
+    }
+    return out;
+  }
+
+  function renderTrackList(){
+    els.trackList.innerHTML = tracks.map(t => {
+      const dotClass = t.state === 'recording' ? 'rec' : t.state === 'playing' ? 'play' : (t.state==='rec-armed'||t.state==='play-armed') ? 'armed' : '';
+      const dur = t.buffer ? formatTime(t.buffer.duration*1000) : '--:--';
+      const label = t.buffer ? `LOOP ${t.id}${t.reversed ? ' (REV)' : ''}` : 'EMPTY';
+      return `
+        <div class="track-row ${t.id===selectedId?'selected':''}" data-track="${t.id}">
+          <span class="track-radio"></span>
+          <span class="track-letter">${t.id}</span>
+          <div class="track-body">
+            <div class="track-mini-bars">${trackMiniBars(t)}</div>
+            <div class="track-meta">
+              <span><span class="track-state-dot ${dotClass}"></span> ${label}</span>
+              <span>${dur}</span>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+    [...els.trackList.querySelectorAll('.track-row')].forEach(row => {
+      row.addEventListener('click', () => {
+        selectedId = row.dataset.track;
+        buildTicks(); updateDialProgress(); updateTransportUI(); renderTrackList(); renderTimeline();
+        const t = getSelected();
+        els.timelineTrackLabel.textContent = `TRACK ${t.id}`;
+        if (t.state === 'playing'){ els.stateLine.textContent = `TRACK ${t.id} ループ再生中`; els.lcdTag.textContent = 'PLAY'; }
+        else if (t.state === 'stopped'){ els.stateLine.textContent = `TRACK ${t.id} 停止中 — PLAYで再生 / CLEARで削除`; els.lcdTag.textContent = 'STOP'; }
+        else { els.stateLine.textContent = `TRACK ${t.id} 待機中 — REC で次の小節頭から録音`; els.lcdTag.textContent = 'READY'; }
+      });
+    });
+  }
+
+  // ---------- effects ----------
+  els.effectsGrid.addEventListener('click', (e) => {
+    const btn = e.target.closest('.fx-btn');
+    if (!btn) return;
+    const fx = btn.dataset.fx;
+    fxState[fx] = !fxState[fx];
+    btn.classList.toggle('on', fxState[fx]);
+    applyFx(fx);
+  });
+
+  function applyFx(fx){
+    if (!audioCtx) return;
+    if (fx === 'reverb') reverbStage.setWet(fxState.reverb ? 0.28 : 0);
+    if (fx === 'delay') delayStage.setWet(fxState.delay ? 0.3 : 0);
+    if (fx === 'tape') tapeStage.setWet(fxState.tape ? 0.5 : 0);
+    if (fx === 'filter') filterNode.frequency.setTargetAtTime(fxState.filter ? 1400 : 20000, audioCtx.currentTime, 0.02);
+    if (fx === 'reverse') applyReverseToSelected();
+  }
+
+  function reverseBuffer(buffer){
+    const rev = audioCtx.createBuffer(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
+    for (let ch=0; ch<buffer.numberOfChannels; ch++){
+      const src = buffer.getChannelData(ch), dst = rev.getChannelData(ch);
+      for (let i=0;i<src.length;i++) dst[i] = src[src.length-1-i];
+    }
+    return rev;
+  }
+
+  function applyReverseToSelected(){
+    const t = getSelected();
+    if (!t.buffer) return;
+    t.reversed = fxState.reverse;
+    t.buffer = t.reversed ? reverseBuffer(t.originalBuffer) : t.originalBuffer;
+    if (t.state === 'playing') startPlayback(t);
+    renderTrackList(); renderTimeline();
+  }
+
+  // ---------- timeline waveform ----------
+  function renderTimeline(){
+    const t = getSelected();
+    els.timelineTrackLabel.textContent = `TRACK ${t.id}`;
+    const canvas = els.waveCanvas;
+    const dpr = window.devicePixelRatio || 1;
+    const cw = canvas.clientWidth, ch = canvas.clientHeight;
+    canvas.width = cw*dpr; canvas.height = ch*dpr;
+    const ctx2d = canvas.getContext('2d');
+    ctx2d.setTransform(dpr,0,0,dpr,0,0);
+    ctx2d.clearRect(0,0,cw,ch);
+
+    if (!t.buffer){ els.timelineEmpty.classList.remove('hidden'); els.playhead.classList.add('hidden'); return; }
+    els.timelineEmpty.classList.add('hidden');
+
+    const data = t.buffer.getChannelData(0);
+    const step = Math.ceil(data.length/cw);
+    const mid = ch/2;
+    ctx2d.fillStyle = '#8a8271';
+    for (let x=0; x<cw; x++){
+      let min=1, max=-1;
+      const start = x*step;
+      for (let i=0;i<step;i++){
+        const idx = start+i;
+        if (idx >= data.length) break;
+        const v = data[idx];
+        if (v<min) min=v;
+        if (v>max) max=v;
+      }
+      if (min>max){ min=0; max=0; }
+      const y1 = mid + min*mid*0.85, y2 = mid + max*mid*0.85;
+      ctx2d.fillRect(x, Math.min(y1,y2), 1, Math.max(1, Math.abs(y2-y1)));
+    }
+    // bar ticks
+    ctx2d.strokeStyle = '#c1b9a6';
+    ctx2d.lineWidth = 1;
+    const barDur = (60/parseFloat(els.bpmNum.textContent || 120))*4;
+    if (barDur > 0 && isFinite(barDur)){
+      const barCount = Math.round(t.buffer.duration / barDur);
+      for (let b=0; b<=barCount; b++){
+        const x = Math.round((b*barDur/t.buffer.duration) * cw);
+        ctx2d.beginPath(); ctx2d.moveTo(x,0); ctx2d.lineTo(x,ch); ctx2d.stroke();
+      }
+    }
+  }
+
+  function playheadLoop(){
+    const t = getSelected();
+    if (t.buffer && t.state === 'playing' && audioCtx){
+      const dur = t.buffer.duration;
+      const phase = ((audioCtx.currentTime - t.playStartTime) % dur + dur) % dur;
+      const cw = els.waveCanvas.clientWidth;
+      els.playhead.style.left = (phase/dur*cw) + 'px';
+      els.playhead.classList.remove('hidden');
+    } else {
+      els.playhead.classList.add('hidden');
+    }
+    requestAnimationFrame(playheadLoop);
+  }
+
+  updateTransportUI();
+  renderTrackList();
+  console.log('[SYNC LOOPER] Initial render complete. App ready.');
+  } catch (initErr) {
+    console.error('[SYNC LOOPER] Fatal init error (script aborted):', initErr);
+    alert('[SYNC LOOPER] 初期化に失敗しました: ' + initErr.name + ' - ' + initErr.message);
+  }
+})();
+</script>
+</body>
+</html>
