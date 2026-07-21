@@ -71,6 +71,19 @@
     animation:learnpulse 1s ease-in-out infinite;
   }
   @keyframes learnpulse{ 50%{ opacity:0.7; } }
+  .panic-btn{
+    font-family:'JetBrains Mono', monospace;
+    font-size:9px;
+    letter-spacing:0.12em;
+    padding:6px 12px;
+    border-radius:20px;
+    border:1px solid var(--red);
+    background:#f7e2df;
+    color:var(--red);
+    cursor:pointer;
+    font-weight:700;
+  }
+  .panic-btn:active{ background:var(--red); color:#fff; }
   .learn-status{
     font-family:'JetBrains Mono', monospace;
     font-size:10px;
@@ -151,6 +164,8 @@
   #btnPlay.playing .deck-glyph polygon{ fill:var(--green); }
   @keyframes blinkbg2{ 50%{ background:linear-gradient(180deg,#d9ecdf,#c3ddc9); } }
   #btnStop .deck-glyph rect{ fill:var(--ink); }
+  #btnStop.armed{ animation:blinkbg3 0.6s step-start infinite; }
+  @keyframes blinkbg3{ 50%{ background:linear-gradient(180deg,#f7ecd8,#f0dcb0); } }
   #btnClear .deck-glyph line{ stroke:var(--ink); }
 
   .reset-row{ text-align:center; margin-top:12px; }
@@ -175,10 +190,15 @@
 
   /* effects */
   .effects-grid{ display:grid; grid-template-columns:repeat(5,1fr); gap:8px; }
-  .fx-btn{ background:#f4f0e5; border:1px solid var(--line); border-radius:10px; padding:12px 4px 8px; cursor:pointer; text-align:center; position:relative; }
-  .fx-btn .fx-dot{ width:6px; height:6px; border-radius:50%; background:var(--ink-faint); margin:0 auto 6px; }
-  .fx-btn.on .fx-dot{ background:var(--amber); box-shadow:0 0 6px var(--amber); }
-  .fx-btn.on{ background:#f7eede; border-color:var(--amber); }
+  .fx-cell{ display:flex; flex-direction:column; gap:6px; }
+  .fx-toggle{ background:#f4f0e5; border:1px solid var(--line); border-radius:10px; padding:12px 4px 8px; cursor:pointer; text-align:center; position:relative; width:100%; }
+  .fx-toggle .fx-dot{ width:6px; height:6px; border-radius:50%; background:var(--ink-faint); margin:0 auto 6px; }
+  .fx-toggle.on .fx-dot{ background:var(--amber); box-shadow:0 0 6px var(--amber); }
+  .fx-toggle.on{ background:#f7eede; border-color:var(--amber); }
+  .fx-toggle.pending{ animation:fxpendingpulse 0.6s ease-in-out infinite; }
+  @keyframes fxpendingpulse{ 50%{ box-shadow:0 0 0 2px var(--amber) inset; } }
+  .fx-amount{ width:100%; height:14px; accent-color:var(--amber); cursor:pointer; }
+  .fx-amount-spacer{ height:14px; }
   .fx-icon{ width:22px; height:22px; margin:0 auto 6px; }
   .fx-icon svg{ width:100%; height:100%; stroke:var(--ink); fill:none; stroke-width:1.6; }
   .fx-label{ font-family:'JetBrains Mono', monospace; font-size:8px; letter-spacing:0.08em; color:var(--ink-dim); }
@@ -207,10 +227,12 @@
   <div class="brand-row">
     <div>
       <div class="brand">LOOP CONSOLE</div>
-      <div class="brand-sub">4-TRACK / CIRCUIT CLOCK SYNC</div>
+      <div class="brand-sub">4-TRACK / MIDI CLOCK SYNC</div>
     </div>
     <div class="brand-right">
       <span class="sync-mode-badge hidden" id="syncModeBadge">EXT</span>
+      <button class="panic-btn" id="btnPanic">PANIC</button>
+      <button class="learn-toggle" id="btnKeyLearn">KEY LEARN</button>
       <button class="learn-toggle" id="btnMidiLearn">MIDI LEARN</button>
       <span class="led-mini" id="syncLed"></span>
     </div>
@@ -299,11 +321,26 @@
     <div class="card">
       <h2>Effects — <span id="fxTrackLabel">TRACK A</span></h2>
       <div class="effects-grid" id="effectsGrid">
-        <button class="fx-btn" data-fx="reverb"><div class="fx-dot"></div><div class="fx-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><circle cx="12" cy="12" r="7"></circle><circle cx="12" cy="12" r="11"></circle></svg></div><div class="fx-label">REVERB</div></button>
-        <button class="fx-btn" data-fx="delay"><div class="fx-dot"></div><div class="fx-icon"><svg viewBox="0 0 24 24"><path d="M3 12h4M11 12h4M19 12h2"></path></svg></div><div class="fx-label">DELAY</div></button>
-        <button class="fx-btn" data-fx="filter"><div class="fx-dot"></div><div class="fx-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="2.4"></circle></svg></div><div class="fx-label">FILTER</div></button>
-        <button class="fx-btn" data-fx="reverse"><div class="fx-dot"></div><div class="fx-icon"><svg viewBox="0 0 24 24"><path d="M4 8l-2 4 2 4M20 8l2 4-2 4" stroke-linecap="round" stroke-linejoin="round"></path></svg></div><div class="fx-label">REVERSE</div></button>
-        <button class="fx-btn" data-fx="tape"><div class="fx-dot"></div><div class="fx-icon"><svg viewBox="0 0 24 24"><circle cx="7" cy="12" r="4"></circle><circle cx="17" cy="12" r="4"></circle></svg></div><div class="fx-label">TAPE</div></button>
+        <div class="fx-cell" data-fx="reverb">
+          <button class="fx-toggle"><div class="fx-dot"></div><div class="fx-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><circle cx="12" cy="12" r="7"></circle><circle cx="12" cy="12" r="11"></circle></svg></div><div class="fx-label">REVERB</div></button>
+          <input type="range" class="fx-amount" min="0" max="100" value="50">
+        </div>
+        <div class="fx-cell" data-fx="delay">
+          <button class="fx-toggle"><div class="fx-dot"></div><div class="fx-icon"><svg viewBox="0 0 24 24"><path d="M3 12h4M11 12h4M19 12h2"></path></svg></div><div class="fx-label">DELAY</div></button>
+          <input type="range" class="fx-amount" min="0" max="100" value="50">
+        </div>
+        <div class="fx-cell" data-fx="filter">
+          <button class="fx-toggle"><div class="fx-dot"></div><div class="fx-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="2.4"></circle></svg></div><div class="fx-label">FILTER</div></button>
+          <input type="range" class="fx-amount" min="0" max="100" value="50">
+        </div>
+        <div class="fx-cell" data-fx="reverse">
+          <button class="fx-toggle"><div class="fx-dot"></div><div class="fx-icon"><svg viewBox="0 0 24 24"><path d="M4 8l-2 4 2 4M20 8l2 4-2 4" stroke-linecap="round" stroke-linejoin="round"></path></svg></div><div class="fx-label">REVERSE</div></button>
+          <div class="fx-amount-spacer"></div>
+        </div>
+        <div class="fx-cell" data-fx="tape">
+          <button class="fx-toggle"><div class="fx-dot"></div><div class="fx-icon"><svg viewBox="0 0 24 24"><circle cx="7" cy="12" r="4"></circle><circle cx="17" cy="12" r="4"></circle></svg></div><div class="fx-label">TAPE</div></button>
+          <input type="range" class="fx-amount" min="0" max="100" value="50">
+        </div>
       </div>
       <div class="fx-caption">エフェクトは選択中トラックに個別にかかります</div>
     </div>
@@ -324,6 +361,14 @@
       <div id="mappingsList"></div>
       <div style="height:10px;"></div>
       <button class="btn-slab" id="btnClearMappings">すべてのマッピングを解除</button>
+    </div>
+
+    <div style="height:16px;"></div>
+    <div class="card">
+      <h2>Keyboard Mappings</h2>
+      <div id="keyMappingsList"></div>
+      <div style="height:10px;"></div>
+      <button class="btn-slab" id="btnResetKeyMappings">デフォルト配列に戻す</button>
     </div>
   </div>
 
@@ -376,6 +421,7 @@
     btnStop: document.getElementById('btnStop'),
     btnClear: document.getElementById('btnClear'),
     btnResetBar: document.getElementById('btnResetBar'),
+    btnPanic: document.getElementById('btnPanic'),
     outputEl: document.getElementById('outputEl'),
     trackList: document.getElementById('trackList'),
     effectsGrid: document.getElementById('effectsGrid'),
@@ -385,9 +431,12 @@
     timelineEmpty: document.getElementById('timelineEmpty'),
     timelineTrackLabel: document.getElementById('timelineTrackLabel'),
     btnMidiLearn: document.getElementById('btnMidiLearn'),
+    btnKeyLearn: document.getElementById('btnKeyLearn'),
     learnStatus: document.getElementById('learnStatus'),
     mappingsList: document.getElementById('mappingsList'),
     btnClearMappings: document.getElementById('btnClearMappings'),
+    keyMappingsList: document.getElementById('keyMappingsList'),
+    btnResetKeyMappings: document.getElementById('btnResetKeyMappings'),
   };
 
   console.log('[SYNC LOOPER] DOM elements resolved:', els);
@@ -482,10 +531,15 @@
     }
   });
 
+  const FX_NAMES = ['reverb','delay','filter','reverse','tape'];
+
   const tracks = ['A','B','C','D'].map(id => ({
     id, bars:4, buffer:null, originalBuffer:null, reversed:false,
     source:null, state:'empty', recordTargetPulse:0, playStartTime:0,
+    loopStartPulse:0, recAlignRefId:null, recAlignRefLen:0, recAlignRefStart:0,
     fx:{ reverb:false, delay:false, filter:false, reverse:false, tape:false },
+    fxPending:{ reverb:null, delay:null, filter:null, reverse:null, tape:null },
+    fxAmount:{ reverb:50, delay:50, filter:50, tape:50 },
     fxChain:null
   }));
   let selectedId = 'A';
@@ -506,6 +560,46 @@
     catch(e){ console.error('[SYNC LOOPER] Failed to save MIDI mappings', e); }
   }
   loadMappings();
+
+  // ---------- Keyboard mapping state ----------
+  let keyLearnActive = false;
+  let pendingKeyLearnAction = null;
+  let keyMappings = {};
+
+  // 縦4列をミキサー風に: 1QAZ=Track A, 2WSX=Track B, 3EDC=Track C, 4RFV=Track D
+  // 上段=REC, 2段目=STOP, 3段目=PLAY, 最下段=CLEAR
+  const DEFAULT_KEY_MAPPINGS = {
+    '1':'transport:rec:A',  'q':'transport:stop:A', 'a':'transport:play:A', 'z':'transport:clear:A',
+    '2':'transport:rec:B',  'w':'transport:stop:B', 's':'transport:play:B', 'x':'transport:clear:B',
+    '3':'transport:rec:C',  'e':'transport:stop:C', 'd':'transport:play:C', 'c':'transport:clear:C',
+    '4':'transport:rec:D',  'r':'transport:stop:D', 'f':'transport:play:D', 'v':'transport:clear:D',
+    'Escape':'panic',
+  };
+
+  function loadKeyMappings(){
+    const raw = localStorage.getItem('syncLooperKeyMappings');
+    if (raw === null){
+      keyMappings = { ...DEFAULT_KEY_MAPPINGS };
+    } else {
+      try{ keyMappings = JSON.parse(raw); }
+      catch(e){ keyMappings = { ...DEFAULT_KEY_MAPPINGS }; }
+      // 既存ユーザー向けマイグレーション: まだどのキーにも割り当てられていないデフォルトアクション(例: panic追加時)を、
+      // 既存のキー割り当てを壊さずに補完する
+      const mappedActions = new Set(Object.values(keyMappings));
+      for (const [k, action] of Object.entries(DEFAULT_KEY_MAPPINGS)){
+        if (!mappedActions.has(action) && !(k in keyMappings)){
+          keyMappings[k] = action;
+        }
+      }
+    }
+    saveKeyMappings();
+    console.log('[SYNC LOOPER] Loaded keyboard mappings:', keyMappings);
+  }
+  function saveKeyMappings(){
+    try{ localStorage.setItem('syncLooperKeyMappings', JSON.stringify(keyMappings)); }
+    catch(e){ console.error('[SYNC LOOPER] Failed to save keyboard mappings', e); }
+  }
+  loadKeyMappings();
 
   function showError(msg){
     els.errorLine.textContent = msg;
@@ -540,7 +634,7 @@
     els.dialProgress.classList.remove('rec','play','armed');
     if (t.state === 'recording') els.dialProgress.classList.add('rec');
     else if (t.state === 'playing') els.dialProgress.classList.add('play');
-    else if (t.state === 'rec-armed' || t.state === 'play-armed') els.dialProgress.classList.add('armed');
+    else if (t.state === 'rec-armed' || t.state === 'play-armed' || t.state === 'stop-armed') els.dialProgress.classList.add('armed');
 
     const barIdx = Math.floor(pos / PULSES_PER_BAR) + 1;
     const beatIdx = Math.floor((pos % PULSES_PER_BAR) / PPQ) + 1;
@@ -636,7 +730,7 @@
         els.bpmInput.value = standaloneBpm;
         startInternalClock();
       }
-      buildTicks(); updateDialProgress(); renderTrackList(); renderTimeline(); renderEffectsGrid(); renderMappingsList();
+      buildTicks(); updateDialProgress(); renderTrackList(); renderTimeline(); renderEffectsGrid(); renderMappingsList(); renderKeyMappingsList();
       requestAnimationFrame(playheadLoop);
     } catch(err){ showError('接続に失敗しました: ' + err.message); }
   });
@@ -810,15 +904,29 @@
       els.bpmNum.textContent = standaloneBpm.toFixed(1);
     }
     pulseCount++;
+    const posInBar = pulseCount % PULSES_PER_BAR;
+    const barBoundary = posInBar === 0;
 
     for (const t of tracks){
-      const posInBar = pulseCount % PULSES_PER_BAR;
-      if (t.state === 'rec-armed' && posInBar === 0){
+      if (t.state === 'rec-armed' && barBoundary){
         startRecording(t);
       } else if (t.state === 'recording' && pulseCount >= t.recordTargetPulse){
         stopRecordingAndPlay(t);
-      } else if (t.state === 'play-armed' && posInBar === 0){
+      } else if (t.state === 'play-armed' && barBoundary){
         startPlayback(t);
+      } else if (t.state === 'stop-armed' && barBoundary){
+        stopPlayback(t);
+      }
+
+      if (barBoundary){
+        FX_NAMES.forEach(name => {
+          if (t.fxPending[name] !== null){
+            t.fx[name] = t.fxPending[name];
+            t.fxPending[name] = null;
+            applyTrackFx(t, name);
+            if (t.id === selectedId) renderEffectsGrid();
+          }
+        });
       }
     }
     updateDialProgress();
@@ -890,6 +998,7 @@
     src.start();
     t.source = src;
     t.playStartTime = audioCtx.currentTime;
+    t.loopStartPulse = pulseCount;
     t.state = 'playing';
     updateTransportUI(); renderTrackList();
     if (t.id === selectedId){
@@ -906,20 +1015,37 @@
     if (t.id === selectedId){ els.stateLine.textContent = `TRACK ${t.id} 停止中 — PLAYで再生 / CLEARで削除`; els.lcdTag.textContent = 'STOP'; }
   }
 
-  // ---------- transport actions (shared by buttons + MIDI mapping) ----------
-  function triggerRec(){
+  // ---------- transport actions (shared by buttons + MIDI/keyboard mapping) ----------
+  // targetId を渡すとそのトラックを対象に、省略時は選択中トラックを対象にする
+  function triggerRec(targetId){
+    if (targetId && targetId !== selectedId) selectTrack(targetId);
     const t = getSelected();
-    if (t.state === 'rec-armed'){ t.state = t.buffer ? 'stopped' : 'empty'; updateTransportUI(); renderTrackList(); els.stateLine.textContent = `TRACK ${t.id} 待機中 — REC で次の小節頭から録音`; els.lcdTag.textContent = 'READY'; return; }
+    if (t.state === 'rec-armed'){ t.state = t.buffer ? 'stopped' : 'empty'; t.recAlignRefId = null; updateTransportUI(); renderTrackList(); els.stateLine.textContent = `TRACK ${t.id} 待機中 — REC で次の小節頭から録音`; els.lcdTag.textContent = 'READY'; return; }
     if (!(t.state === 'empty' || t.state === 'stopped')) return;
     if (!running){ showError('クロックが動作していません。接続設定を確認してください。'); return; }
     if (t.state === 'stopped') stopPlayback(t);
+
+    // 他に再生中のトラックがあれば、その中で最も長いループの周回頭(小節1拍目に戻る瞬間)まで待つ
+    const playingTracks = tracks.filter(tr => tr.state === 'playing' && tr.id !== t.id);
+    if (playingTracks.length > 0){
+      const ref = playingTracks.reduce((a,b) => (b.bars > a.bars ? b : a));
+      t.recAlignRefId = ref.id;
+      t.recAlignRefLen = ref.bars * PULSES_PER_BAR;
+      t.recAlignRefStart = ref.loopStartPulse;
+    } else {
+      t.recAlignRefId = null;
+    }
+
     t.state = 'rec-armed';
     updateTransportUI(); renderTrackList();
-    els.stateLine.textContent = `TRACK ${t.id} 録音待機中 — 次の小節頭で開始します`;
+    els.stateLine.textContent = t.recAlignRefId
+      ? `TRACK ${t.id} 録音待機中 — TRACK ${t.recAlignRefId} の周回頭で開始します`
+      : `TRACK ${t.id} 録音待機中 — 次の小節頭で開始します`;
     els.lcdTag.textContent = 'ARMED';
   }
 
-  function triggerPlay(){
+  function triggerPlay(targetId){
+    if (targetId && targetId !== selectedId) selectTrack(targetId);
     const t = getSelected();
     if (t.state === 'play-armed'){ t.state = 'stopped'; updateTransportUI(); renderTrackList(); return; }
     if (t.state !== 'stopped') return;
@@ -932,12 +1058,24 @@
     }
   }
 
-  function triggerStop(){
+  function triggerStop(targetId){
+    if (targetId && targetId !== selectedId) selectTrack(targetId);
     const t = getSelected();
-    if (t.state === 'playing') stopPlayback(t);
+    if (t.state === 'stop-armed'){
+      t.state = 'playing';
+      updateTransportUI(); renderTrackList();
+      if (t.id === selectedId){ els.stateLine.textContent = `TRACK ${t.id} ループ再生中`; els.lcdTag.textContent = 'PLAY'; }
+      return;
+    }
+    if (t.state !== 'playing') return;
+    if (!running){ stopPlayback(t); return; }
+    t.state = 'stop-armed';
+    updateTransportUI(); renderTrackList();
+    if (t.id === selectedId){ els.stateLine.textContent = `TRACK ${t.id} 停止待機中 — 次の小節頭で停止します`; els.lcdTag.textContent = 'STOP\u2248'; }
   }
 
-  function triggerClear(){
+  function triggerClear(targetId){
+    if (targetId && targetId !== selectedId) selectTrack(targetId);
     const t = getSelected();
     if (t.source){ try{ t.source.stop(); }catch(e){} t.source = null; }
     t.buffer = null; t.originalBuffer = null; t.reversed = false; t.fx.reverse = false;
@@ -948,6 +1086,25 @@
     els.lcdTag.textContent = 'READY';
   }
 
+  // 全トラックを即座に停止(クオンタイズなし・緊急停止)
+  function panicStopAll(){
+    tracks.forEach(tr => {
+      if (tr.source){ try{ tr.source.stop(); }catch(e){} tr.source = null; }
+      if (tr.state === 'recording' || tr.state === 'rec-armed' || tr.state === 'playing' || tr.state === 'play-armed' || tr.state === 'stop-armed'){
+        tr.state = tr.buffer ? 'stopped' : 'empty';
+      }
+      tr.recAlignRefId = null;
+      FX_NAMES.forEach(name => { tr.fxPending[name] = null; });
+    });
+    recordedChunks = [];
+    freezeTimer();
+    updateTransportUI(); renderTrackList(); renderEffectsGrid(); renderTimeline();
+    els.stateLine.textContent = '全トラック停止(PANIC)';
+    els.lcdTag.textContent = 'STOP';
+    console.log('[SYNC LOOPER] PANIC: all tracks stopped immediately');
+  }
+  els.btnPanic.addEventListener('click', () => onControlActivate('panic', panicStopAll));
+
   function selectTrack(id){
     selectedId = id;
     buildTicks(); updateDialProgress(); updateTransportUI(); renderTrackList(); renderTimeline(); renderEffectsGrid();
@@ -956,11 +1113,26 @@
     els.fxTrackLabel.textContent = `TRACK ${t.id}`;
     if (t.state === 'playing'){ els.stateLine.textContent = `TRACK ${t.id} ループ再生中`; els.lcdTag.textContent = 'PLAY'; }
     else if (t.state === 'stopped'){ els.stateLine.textContent = `TRACK ${t.id} 停止中 — PLAYで再生 / CLEARで削除`; els.lcdTag.textContent = 'STOP'; }
+    else if (t.state === 'recording'){ els.stateLine.textContent = `TRACK ${t.id} 録音中 — ${t.bars}小節`; els.lcdTag.textContent = 'REC'; }
+    else if (t.state === 'rec-armed'){
+      els.stateLine.textContent = t.recAlignRefId
+        ? `TRACK ${t.id} 録音待機中 — TRACK ${t.recAlignRefId} の周回頭で開始します`
+        : `TRACK ${t.id} 録音待機中 — 次の小節頭で開始します`;
+      els.lcdTag.textContent = 'ARMED';
+    }
+    else if (t.state === 'play-armed'){ els.stateLine.textContent = `TRACK ${t.id} 再生待機中 — 次の小節頭で開始します`; els.lcdTag.textContent = 'ARMED'; }
+    else if (t.state === 'stop-armed'){ els.stateLine.textContent = `TRACK ${t.id} 停止待機中 — 次の小節頭で停止します`; els.lcdTag.textContent = 'STOP\u2248'; }
     else { els.stateLine.textContent = `TRACK ${t.id} 待機中 — REC で次の小節頭から録音`; els.lcdTag.textContent = 'READY'; }
   }
 
   // ---------- learn-mode wrapper ----------
   function onControlActivate(actionId, executeFn){
+    if (keyLearnActive){
+      pendingKeyLearnAction = actionId;
+      console.log('[SYNC LOOPER] Key Learn armed for action:', actionId);
+      updateLearnStatusUI();
+      return;
+    }
     if (midiLearnActive){
       pendingLearnAction = actionId;
       console.log('[SYNC LOOPER] MIDI Learn armed for action:', actionId);
@@ -984,7 +1156,8 @@
     els.btnPlay.classList.toggle('armed', t.state === 'play-armed');
     els.btnPlay.classList.toggle('playing', t.state === 'playing');
     els.btnPlay.disabled = !(t.state === 'stopped' || t.state === 'play-armed');
-    els.btnStop.disabled = (t.state !== 'playing');
+    els.btnStop.classList.toggle('armed', t.state === 'stop-armed');
+    els.btnStop.disabled = !(t.state === 'playing' || t.state === 'stop-armed');
     els.btnClear.disabled = !(t.buffer || t.state === 'recording' || t.state === 'rec-armed');
     [...els.barsSelect.children].forEach(b => {
       b.disabled = (t.state !== 'empty');
@@ -1010,7 +1183,7 @@
 
   function renderTrackList(){
     els.trackList.innerHTML = tracks.map(t => {
-      const dotClass = t.state === 'recording' ? 'rec' : t.state === 'playing' ? 'play' : (t.state==='rec-armed'||t.state==='play-armed') ? 'armed' : '';
+      const dotClass = t.state === 'recording' ? 'rec' : t.state === 'playing' ? 'play' : (t.state==='rec-armed'||t.state==='play-armed'||t.state==='stop-armed') ? 'armed' : '';
       const dur = t.buffer ? formatTime(t.buffer.duration*1000) : '--:--';
       const label = t.buffer ? `LOOP ${t.id}${t.reversed ? ' (REV)' : ''}` : 'EMPTY';
       return `
@@ -1034,27 +1207,56 @@
 
   // ---------- effects ----------
   els.effectsGrid.addEventListener('click', (e) => {
-    const btn = e.target.closest('.fx-btn');
+    const btn = e.target.closest('.fx-toggle');
     if (!btn) return;
-    const fx = btn.dataset.fx;
+    const cell = btn.closest('.fx-cell');
+    const fx = cell.dataset.fx;
     onControlActivate('fx:'+selectedId+':'+fx, () => toggleTrackFx(selectedId, fx));
+  });
+
+  els.effectsGrid.addEventListener('input', (e) => {
+    const slider = e.target.closest('.fx-amount');
+    if (!slider) return;
+    const cell = slider.closest('.fx-cell');
+    const fx = cell.dataset.fx;
+    const t = getSelected();
+    t.fxAmount[fx] = parseInt(slider.value, 10);
+    applyTrackFx(t, fx);
   });
 
   function toggleTrackFx(trackId, fxName){
     const t = tracks.find(tr => tr.id === trackId);
     if (!t) return;
-    t.fx[fxName] = !t.fx[fxName];
-    applyTrackFx(t, fxName);
+    // 現在の「見た目上の状態」(未確定の予約があればそれ、なければ確定値)を反転させる
+    const effective = t.fxPending[fxName] !== null ? t.fxPending[fxName] : t.fx[fxName];
+    const newIntended = !effective;
+    if (!running){
+      // クロックが動いていなければ待つ意味がないので即時反映
+      t.fx[fxName] = newIntended;
+      t.fxPending[fxName] = null;
+      applyTrackFx(t, fxName);
+    } else if (newIntended === t.fx[fxName]){
+      // 二度押し等で結局今の状態と同じに戻る場合は予約を取り消すだけ
+      t.fxPending[fxName] = null;
+    } else {
+      // 次の小節頭まで予約(クオンタイズ)
+      t.fxPending[fxName] = newIntended;
+    }
     if (trackId === selectedId) renderEffectsGrid();
     renderTrackList();
   }
 
+  function filterAmountToFreq(amount){
+    const minF = 200, maxF = 20000;
+    return maxF * Math.pow(minF / maxF, amount);
+  }
+
   function applyTrackFx(t, fx){
     if (!t.fxChain || !audioCtx) return;
-    if (fx === 'reverb') t.fxChain.reverbStage.setWet(t.fx.reverb ? 0.28 : 0);
-    if (fx === 'delay') t.fxChain.delayStage.setWet(t.fx.delay ? 0.3 : 0);
-    if (fx === 'tape') t.fxChain.tapeStage.setWet(t.fx.tape ? 0.5 : 0);
-    if (fx === 'filter') t.fxChain.filter.frequency.setTargetAtTime(t.fx.filter ? 1400 : 20000, audioCtx.currentTime, 0.02);
+    if (fx === 'reverb') t.fxChain.reverbStage.setWet(t.fx.reverb ? t.fxAmount.reverb/100 : 0);
+    if (fx === 'delay') t.fxChain.delayStage.setWet(t.fx.delay ? t.fxAmount.delay/100 : 0);
+    if (fx === 'tape') t.fxChain.tapeStage.setWet(t.fx.tape ? t.fxAmount.tape/100 : 0);
+    if (fx === 'filter') t.fxChain.filter.frequency.setTargetAtTime(t.fx.filter ? filterAmountToFreq(t.fxAmount.filter/100) : 20000, audioCtx.currentTime, 0.02);
     if (fx === 'reverse') applyReverseToTrack(t);
   }
 
@@ -1078,9 +1280,17 @@
 
   function renderEffectsGrid(){
     const t = getSelected();
-    [...els.effectsGrid.querySelectorAll('.fx-btn')].forEach(btn => {
-      const fx = btn.dataset.fx;
-      btn.classList.toggle('on', !!t.fx[fx]);
+    [...els.effectsGrid.querySelectorAll('.fx-cell')].forEach(cell => {
+      const fx = cell.dataset.fx;
+      const pending = t.fxPending[fx];
+      const effective = pending !== null ? pending : t.fx[fx];
+      const toggleBtn = cell.querySelector('.fx-toggle');
+      toggleBtn.classList.toggle('on', !!effective);
+      toggleBtn.classList.toggle('pending', pending !== null);
+      const slider = cell.querySelector('.fx-amount');
+      if (slider && t.fxAmount[fx] !== undefined){
+        slider.value = t.fxAmount[fx];
+      }
     });
   }
 
@@ -1088,18 +1298,61 @@
   els.btnMidiLearn.addEventListener('click', () => {
     midiLearnActive = !midiLearnActive;
     pendingLearnAction = null;
+    if (midiLearnActive){ keyLearnActive = false; pendingKeyLearnAction = null; els.btnKeyLearn.classList.remove('on'); }
     els.btnMidiLearn.classList.toggle('on', midiLearnActive);
     console.log('[SYNC LOOPER] MIDI Learn mode:', midiLearnActive);
     updateLearnStatusUI();
   });
 
+  // ---------- Keyboard learn toggle ----------
+  els.btnKeyLearn.addEventListener('click', () => {
+    keyLearnActive = !keyLearnActive;
+    pendingKeyLearnAction = null;
+    if (keyLearnActive){ midiLearnActive = false; pendingLearnAction = null; els.btnMidiLearn.classList.remove('on'); }
+    els.btnKeyLearn.classList.toggle('on', keyLearnActive);
+    console.log('[SYNC LOOPER] Key Learn mode:', keyLearnActive);
+    updateLearnStatusUI();
+  });
+
+  // ---------- global keyboard listener ----------
+  window.addEventListener('keydown', (e) => {
+    // 入力欄にフォーカスがある時はショートカットを無効化
+    const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.repeat) return;
+    // パフォーマンス画面が表示されていない時は無効
+    if (els.performPanel.classList.contains('hidden')) return;
+
+    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+
+    if (keyLearnActive && pendingKeyLearnAction){
+      e.preventDefault();
+      // 同じアクションに既存の別キーがあれば消す
+      for (const k of Object.keys(keyMappings)){ if (keyMappings[k] === pendingKeyLearnAction) delete keyMappings[k]; }
+      keyMappings[key] = pendingKeyLearnAction;
+      saveKeyMappings(); renderKeyMappingsList();
+      console.log('[SYNC LOOPER] Key mapping created:', key, '->', pendingKeyLearnAction);
+      pendingKeyLearnAction = null;
+      updateLearnStatusUI();
+      return;
+    }
+
+    if (!keyLearnActive && !midiLearnActive && key in keyMappings){
+      e.preventDefault();
+      executeAction(keyMappings[key]);
+    }
+  });
+
   function actionLabel(action){
     if (!action) return '';
+    if (action === 'panic') return 'PANIC(全停止)';
     if (action.startsWith('track:')) return `TRACK ${action.split(':')[1]} 選択`;
-    if (action === 'transport:rec') return 'REC';
-    if (action === 'transport:play') return 'PLAY';
-    if (action === 'transport:stop') return 'STOP';
-    if (action === 'transport:clear') return 'CLEAR';
+    if (action.startsWith('transport:')){
+      const parts = action.split(':');
+      const kindLabel = { rec:'REC', play:'PLAY', stop:'STOP', clear:'CLEAR' }[parts[1]] || parts[1].toUpperCase();
+      return parts[2] ? `TRACK ${parts[2]} ${kindLabel}` : kindLabel;
+    }
     if (action.startsWith('fx:')){
       const parts = action.split(':');
       return `TRACK ${parts[1]} ${parts[2].toUpperCase()}`;
@@ -1120,21 +1373,40 @@
   }
 
   function updateLearnStatusUI(){
-    if (!midiLearnActive){ els.learnStatus.classList.add('hidden'); return; }
-    els.learnStatus.classList.remove('hidden');
-    if (pendingLearnAction){
-      els.learnStatus.textContent = `学習待機中: ${actionLabel(pendingLearnAction)} — MIDI機器のノート/CCを操作してください`;
-    } else {
-      els.learnStatus.textContent = 'MIDI LEARN 有効 — マッピングしたいボタンをクリックしてください';
+    if (keyLearnActive){
+      els.learnStatus.classList.remove('hidden');
+      if (pendingKeyLearnAction){
+        els.learnStatus.textContent = `学習待機中: ${actionLabel(pendingKeyLearnAction)} — 割り当てたいキーを押してください`;
+      } else {
+        els.learnStatus.textContent = 'KEY LEARN 有効 — マッピングしたいボタンをクリックしてください';
+      }
+      return;
     }
+    if (midiLearnActive){
+      els.learnStatus.classList.remove('hidden');
+      if (pendingLearnAction){
+        els.learnStatus.textContent = `学習待機中: ${actionLabel(pendingLearnAction)} — MIDI機器のノート/CCを操作してください`;
+      } else {
+        els.learnStatus.textContent = 'MIDI LEARN 有効 — マッピングしたいボタンをクリックしてください';
+      }
+      return;
+    }
+    els.learnStatus.classList.add('hidden');
   }
 
   function executeAction(action){
+    if (action === 'panic'){ panicStopAll(); return; }
     if (action.startsWith('track:')){ selectTrack(action.split(':')[1]); return; }
-    if (action === 'transport:rec'){ triggerRec(); return; }
-    if (action === 'transport:play'){ triggerPlay(); return; }
-    if (action === 'transport:stop'){ triggerStop(); return; }
-    if (action === 'transport:clear'){ triggerClear(); return; }
+    if (action.startsWith('transport:')){
+      const parts = action.split(':'); // transport:rec または transport:rec:A
+      const kind = parts[1];
+      const targetId = parts[2]; // undefined なら選択中トラック
+      if (kind === 'rec'){ triggerRec(targetId); return; }
+      if (kind === 'play'){ triggerPlay(targetId); return; }
+      if (kind === 'stop'){ triggerStop(targetId); return; }
+      if (kind === 'clear'){ triggerClear(targetId); return; }
+      return;
+    }
     if (action.startsWith('fx:')){
       const parts = action.split(':');
       toggleTrackFx(parts[1], parts[2]);
@@ -1165,6 +1437,47 @@
   els.btnClearMappings.addEventListener('click', () => {
     midiMappings = {};
     saveMappings(); renderMappingsList();
+  });
+
+  // ---------- keyboard mappings list ----------
+  function keyLabel(key){
+    if (key === ' ') return 'SPACE';
+    if (key.length === 1) return key.toUpperCase();
+    return key;
+  }
+
+  function renderKeyMappingsList(){
+    const entries = Object.entries(keyMappings);
+    if (!entries.length){
+      els.keyMappingsList.innerHTML = '<div class="mapping-empty">キーマッピングがありません。KEY LEARNをオンにして、操作したいボタンをクリックしてからキーを押してください。</div>';
+      return;
+    }
+    // トラック順→アクション順で見やすく並べる
+    const order = { rec:0, stop:1, play:2, clear:3 };
+    entries.sort((a,b) => {
+      const pa = a[1].split(':'), pb = b[1].split(':');
+      const ta = pa[2] || '', tb = pb[2] || '';
+      if (ta !== tb) return ta.localeCompare(tb);
+      return (order[pa[1]] ?? 9) - (order[pb[1]] ?? 9);
+    });
+    els.keyMappingsList.innerHTML = entries.map(([key,action]) => `
+      <div class="mapping-row">
+        <span class="mapping-trigger">${keyLabel(key)}</span>
+        <span class="mapping-arrow">→</span>
+        <span class="mapping-action">${actionLabel(action)}</span>
+        <button class="mapping-remove" data-key="${key}">×</button>
+      </div>`).join('');
+    [...els.keyMappingsList.querySelectorAll('.mapping-remove')].forEach(btn => {
+      btn.addEventListener('click', () => {
+        delete keyMappings[btn.dataset.key];
+        saveKeyMappings(); renderKeyMappingsList();
+      });
+    });
+  }
+
+  els.btnResetKeyMappings.addEventListener('click', () => {
+    keyMappings = { ...DEFAULT_KEY_MAPPINGS };
+    saveKeyMappings(); renderKeyMappingsList();
   });
 
   // ---------- timeline waveform ----------
@@ -1230,6 +1543,7 @@
   updateTransportUI();
   renderTrackList();
   renderMappingsList();
+  renderKeyMappingsList();
   console.log('[SYNC LOOPER] Initial render complete. App ready.');
   } catch (initErr) {
     console.error('[SYNC LOOPER] Fatal init error (script aborted):', initErr);
