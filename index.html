@@ -46,11 +46,40 @@
     padding:20px;
     box-shadow:0 30px 60px -24px rgba(30,25,15,0.45), inset 0 1px 0 rgba(255,255,255,0.6);
   }
-  .brand-row{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+  .brand-row{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
   .brand{ font-family:'Space Grotesk', sans-serif; font-weight:700; font-size:16px; }
   .brand-sub{ font-family:'JetBrains Mono', monospace; font-size:9px; letter-spacing:0.18em; color:var(--ink-dim); margin-top:2px; }
+  .brand-right{ display:flex; align-items:center; gap:10px; }
   .led-mini{ width:7px;height:7px;border-radius:50%; background:var(--red); opacity:0.25; transition:opacity .15s, box-shadow .15s; }
   .led-mini.on{ opacity:1; box-shadow:0 0 6px var(--red); }
+  .learn-toggle{
+    font-family:'JetBrains Mono', monospace;
+    font-size:9px;
+    letter-spacing:0.1em;
+    padding:6px 10px;
+    border-radius:20px;
+    border:1px solid var(--line);
+    background:#f4f0e5;
+    color:var(--ink-dim);
+    cursor:pointer;
+  }
+  .learn-toggle.on{
+    background:var(--amber);
+    color:#2a1a06;
+    border-color:var(--amber);
+    animation:learnpulse 1s ease-in-out infinite;
+  }
+  @keyframes learnpulse{ 50%{ opacity:0.7; } }
+  .learn-status{
+    font-family:'JetBrains Mono', monospace;
+    font-size:10px;
+    color:#8a5a1c;
+    background:#f7ecd8;
+    border:1px solid var(--amber);
+    border-radius:6px;
+    padding:6px 10px;
+    margin-bottom:10px;
+  }
   .hairline{ height:1px; background:linear-gradient(90deg, transparent, var(--line) 12%, var(--line) 88%, transparent); margin:14px 0; }
   .hidden{ display:none !important; }
 
@@ -143,12 +172,22 @@
   .fx-icon{ width:22px; height:22px; margin:0 auto 6px; }
   .fx-icon svg{ width:100%; height:100%; stroke:var(--ink); fill:none; stroke-width:1.6; }
   .fx-label{ font-family:'JetBrains Mono', monospace; font-size:8px; letter-spacing:0.08em; color:var(--ink-dim); }
+  .fx-caption{ text-align:center; font-family:'JetBrains Mono', monospace; font-size:9px; color:var(--ink-dim); letter-spacing:0.1em; margin-top:10px; }
 
   /* timeline */
   .timeline-wrap{ position:relative; height:90px; background:#f4f0e5; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
   .timeline-wrap canvas{ width:100%; height:100%; display:block; }
   .playhead{ position:absolute; top:0; bottom:0; width:1px; background:var(--red); left:0; }
   .timeline-empty{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:'JetBrains Mono', monospace; font-size:11px; color:var(--ink-faint); letter-spacing:0.1em; }
+
+  /* midi mappings */
+  .mapping-row{ display:flex; align-items:center; gap:8px; padding:8px 4px; border-bottom:1px solid var(--line); font-family:'JetBrains Mono', monospace; font-size:11px; }
+  .mapping-row:last-child{ border-bottom:none; }
+  .mapping-trigger{ color:var(--ink); background:#f4f0e5; border:1px solid var(--line); border-radius:6px; padding:2px 6px; white-space:nowrap; }
+  .mapping-arrow{ color:var(--ink-faint); }
+  .mapping-action{ flex:1; color:var(--ink-dim); }
+  .mapping-remove{ background:none; border:none; color:var(--red); cursor:pointer; font-size:14px; line-height:1; padding:2px 6px; }
+  .mapping-empty{ font-family:'JetBrains Mono', monospace; font-size:11px; color:var(--ink-faint); line-height:1.6; }
 
   .footer{ margin-top:16px; text-align:center; font-family:'JetBrains Mono', monospace; font-size:9px; letter-spacing:0.14em; color:var(--ink-faint); }
 </style>
@@ -160,8 +199,13 @@
       <div class="brand">LOOP CONSOLE</div>
       <div class="brand-sub">4-TRACK / CIRCUIT CLOCK SYNC</div>
     </div>
-    <span class="led-mini" id="syncLed"></span>
+    <div class="brand-right">
+      <button class="learn-toggle" id="btnMidiLearn">MIDI LEARN</button>
+      <span class="led-mini" id="syncLed"></span>
+    </div>
   </div>
+  <div class="learn-status hidden" id="learnStatus"></div>
+
   <div class="hairline"></div>
 
   <div class="setup" id="setupPanel">
@@ -224,7 +268,7 @@
 
     <div style="height:16px;"></div>
     <div class="card">
-      <h2>Effects (Master Bus)</h2>
+      <h2>Effects — <span id="fxTrackLabel">TRACK A</span></h2>
       <div class="effects-grid" id="effectsGrid">
         <button class="fx-btn" data-fx="reverb"><div class="fx-dot"></div><div class="fx-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><circle cx="12" cy="12" r="7"></circle><circle cx="12" cy="12" r="11"></circle></svg></div><div class="fx-label">REVERB</div></button>
         <button class="fx-btn" data-fx="delay"><div class="fx-dot"></div><div class="fx-icon"><svg viewBox="0 0 24 24"><path d="M3 12h4M11 12h4M19 12h2"></path></svg></div><div class="fx-label">DELAY</div></button>
@@ -232,6 +276,7 @@
         <button class="fx-btn" data-fx="reverse"><div class="fx-dot"></div><div class="fx-icon"><svg viewBox="0 0 24 24"><path d="M4 8l-2 4 2 4M20 8l2 4-2 4" stroke-linecap="round" stroke-linejoin="round"></path></svg></div><div class="fx-label">REVERSE</div></button>
         <button class="fx-btn" data-fx="tape"><div class="fx-dot"></div><div class="fx-icon"><svg viewBox="0 0 24 24"><circle cx="7" cy="12" r="4"></circle><circle cx="17" cy="12" r="4"></circle></svg></div><div class="fx-label">TAPE</div></button>
       </div>
+      <div class="fx-caption">エフェクトは選択中トラックに個別にかかります</div>
     </div>
 
     <div style="height:16px;"></div>
@@ -242,6 +287,14 @@
         <div class="playhead hidden" id="playhead"></div>
         <div class="timeline-empty" id="timelineEmpty">EMPTY</div>
       </div>
+    </div>
+
+    <div style="height:16px;"></div>
+    <div class="card">
+      <h2>MIDI Mappings</h2>
+      <div id="mappingsList"></div>
+      <div style="height:10px;"></div>
+      <button class="btn-slab" id="btnClearMappings">すべてのマッピングを解除</button>
     </div>
   </div>
 
@@ -287,10 +340,15 @@
     outputEl: document.getElementById('outputEl'),
     trackList: document.getElementById('trackList'),
     effectsGrid: document.getElementById('effectsGrid'),
+    fxTrackLabel: document.getElementById('fxTrackLabel'),
     waveCanvas: document.getElementById('waveCanvas'),
     playhead: document.getElementById('playhead'),
     timelineEmpty: document.getElementById('timelineEmpty'),
     timelineTrackLabel: document.getElementById('timelineTrackLabel'),
+    btnMidiLearn: document.getElementById('btnMidiLearn'),
+    learnStatus: document.getElementById('learnStatus'),
+    mappingsList: document.getElementById('mappingsList'),
+    btnClearMappings: document.getElementById('btnClearMappings'),
   };
 
   console.log('[SYNC LOOPER] DOM elements resolved:', els);
@@ -304,22 +362,37 @@
   const PULSES_PER_BAR = PPQ * 4;
 
   let midiAccess = null, midiInput = null;
-  let audioCtx = null, micStream = null, sourceNode = null, workletNode = null, destNode = null;
-  let masterMix = null, filterNode = null, delayStage = null, reverbStage = null, tapeStage = null, masterGain = null;
+  let audioCtx = null, micStream = null, sourceNode = null, workletNode = null, destNode = null, masterGain = null;
 
   let clockTimestamps = [];
   let pulseCount = 0;
   let running = false;
   let recordedChunks = [];
 
-  const fxState = { reverb:false, delay:false, filter:false, reverse:false, tape:false };
-
   const tracks = ['A','B','C','D'].map(id => ({
     id, bars:4, buffer:null, originalBuffer:null, reversed:false,
-    source:null, state:'empty', recordTargetPulse:0, playStartTime:0
+    source:null, state:'empty', recordTargetPulse:0, playStartTime:0,
+    fx:{ reverb:false, delay:false, filter:false, reverse:false, tape:false },
+    fxChain:null
   }));
   let selectedId = 'A';
   const getSelected = () => tracks.find(t => t.id === selectedId);
+
+  // ---------- MIDI mapping state ----------
+  let midiLearnActive = false;
+  let pendingLearnAction = null;
+  let midiMappings = {};
+
+  function loadMappings(){
+    try{ midiMappings = JSON.parse(localStorage.getItem('syncLooperMidiMappings') || '{}'); }
+    catch(e){ midiMappings = {}; }
+    console.log('[SYNC LOOPER] Loaded MIDI mappings:', midiMappings);
+  }
+  function saveMappings(){
+    try{ localStorage.setItem('syncLooperMidiMappings', JSON.stringify(midiMappings)); }
+    catch(e){ console.error('[SYNC LOOPER] Failed to save MIDI mappings', e); }
+  }
+  loadMappings();
 
   function showError(msg){
     els.errorLine.textContent = msg;
@@ -432,7 +505,7 @@
       await connect();
       els.setupPanel.classList.add('hidden');
       els.performPanel.classList.remove('hidden');
-      buildTicks(); updateDialProgress(); renderTrackList(); renderTimeline();
+      buildTicks(); updateDialProgress(); renderTrackList(); renderTimeline(); renderEffectsGrid(); renderMappingsList();
       requestAnimationFrame(playheadLoop);
     } catch(err){ showError('接続に失敗しました: ' + err.message); }
   });
@@ -460,6 +533,39 @@
     const n = 4096, curve = new Float32Array(n), k = amount * 60 + 1;
     for (let i=0;i<n;i++){ const x = i*2/n - 1; curve[i] = (1+k)*x/(1+k*Math.abs(x)); }
     return curve;
+  }
+
+  function buildTrackFxChain(){
+    const input = audioCtx.createGain();
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 20000;
+    const delayStage = makeStage((inp) => {
+      const delay = audioCtx.createDelay(1.5);
+      delay.delayTime.value = 0.27;
+      const fb = audioCtx.createGain(); fb.gain.value = 0.35;
+      inp.connect(delay); delay.connect(fb); fb.connect(delay);
+      return delay;
+    });
+    const reverbStage = makeStage((inp) => {
+      const conv = audioCtx.createConvolver();
+      conv.buffer = makeImpulse(audioCtx, 2.2, 3.2);
+      inp.connect(conv);
+      return conv;
+    });
+    const tapeStage = makeStage((inp) => {
+      const shaper = audioCtx.createWaveShaper();
+      shaper.curve = makeSaturationCurve(0.35);
+      shaper.oversample = '4x';
+      const lp = audioCtx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 5500;
+      inp.connect(shaper); shaper.connect(lp);
+      return lp;
+    });
+    input.connect(filter);
+    filter.connect(delayStage.input);
+    delayStage.output.connect(reverbStage.input);
+    reverbStage.output.connect(tapeStage.input);
+    return { input, filter, delayStage, reverbStage, tapeStage, output: tapeStage.output };
   }
 
   async function connect(){
@@ -497,39 +603,14 @@
     };
     sourceNode.connect(workletNode);
 
-    // ---- effects bus ----
-    masterMix = audioCtx.createGain();
-    filterNode = audioCtx.createBiquadFilter();
-    filterNode.type = 'lowpass';
-    filterNode.frequency.value = 20000;
-    delayStage = makeStage((input) => {
-      const delay = audioCtx.createDelay(1.5);
-      delay.delayTime.value = 0.27;
-      const fb = audioCtx.createGain(); fb.gain.value = 0.35;
-      input.connect(delay); delay.connect(fb); fb.connect(delay);
-      return delay;
-    });
-    reverbStage = makeStage((input) => {
-      const conv = audioCtx.createConvolver();
-      conv.buffer = makeImpulse(audioCtx, 2.2, 3.2);
-      input.connect(conv);
-      return conv;
-    });
-    tapeStage = makeStage((input) => {
-      const shaper = audioCtx.createWaveShaper();
-      shaper.curve = makeSaturationCurve(0.35);
-      shaper.oversample = '4x';
-      const lp = audioCtx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 5500;
-      input.connect(shaper); shaper.connect(lp);
-      return lp;
-    });
+    // ---- per-track effects chains + shared master sum ----
     masterGain = audioCtx.createGain();
-
-    masterMix.connect(filterNode);
-    filterNode.connect(delayStage.input);
-    delayStage.output.connect(reverbStage.input);
-    reverbStage.output.connect(tapeStage.input);
-    tapeStage.output.connect(masterGain);
+    tracks.forEach(t => {
+      t.fxChain = buildTrackFxChain();
+      t.fxChain.output.connect(masterGain);
+      // re-apply any persisted fx toggle state to the freshly built nodes
+      applyTrackFx(t, 'reverb'); applyTrackFx(t, 'delay'); applyTrackFx(t, 'filter'); applyTrackFx(t, 'tape');
+    });
 
     destNode = audioCtx.createMediaStreamDestination();
     masterGain.connect(destNode);
@@ -541,13 +622,35 @@
     await els.outputEl.play().catch(()=>{});
   }
 
-  // ---------- MIDI clock ----------
+  // ---------- MIDI clock + control input ----------
   function onMidiMessage(e){
     const status = e.data[0];
-    if (status === 0xF8) handleClockPulse();
-    else if (status === 0xFA){ pulseCount = 0; running = true; setSyncUI(true); }
-    else if (status === 0xFB){ running = true; setSyncUI(true); }
-    else if (status === 0xFC){ running = false; }
+    if (status === 0xF8){ handleClockPulse(); return; }
+    if (status === 0xFA){ pulseCount = 0; running = true; setSyncUI(true); return; }
+    if (status === 0xFB){ running = true; setSyncUI(true); return; }
+    if (status === 0xFC){ running = false; return; }
+
+    const statusType = status & 0xF0;
+    if (statusType === 0x90 || statusType === 0xB0){
+      const data1 = e.data[1];
+      const data2 = e.data.length > 2 ? e.data[2] : 0;
+      const isTrigger = statusType === 0x90 ? data2 > 0 : data2 >= 64;
+      if (!isTrigger) return;
+      const channel = status & 0x0F;
+      const key = (statusType === 0x90 ? 'noteon_' : 'cc_') + channel + '_' + data1;
+      console.log('[SYNC LOOPER] MIDI control message received:', key);
+
+      if (midiLearnActive && pendingLearnAction){
+        for (const k of Object.keys(midiMappings)){ if (midiMappings[k] === pendingLearnAction) delete midiMappings[k]; }
+        midiMappings[key] = pendingLearnAction;
+        saveMappings(); renderMappingsList();
+        console.log('[SYNC LOOPER] MIDI mapping created:', key, '->', pendingLearnAction);
+        pendingLearnAction = null;
+        updateLearnStatusUI();
+      } else if (!midiLearnActive && key in midiMappings){
+        executeAction(midiMappings[key]);
+      }
+    }
   }
   function setSyncUI(on){ els.syncLed.classList.toggle('on', on); }
 
@@ -597,9 +700,7 @@
     t.state = 'recording';
     t.recordTargetPulse = pulseCount + t.bars * PULSES_PER_BAR;
     updateTransportUI(); renderTrackList();
-    els.stateLine.textContent = `TRACK ${t.id} 録音中 — ${t.bars}小節`;
-    els.lcdTag.textContent = 'REC';
-    startTimer();
+    if (t.id === selectedId){ els.stateLine.textContent = `TRACK ${t.id} 録音中 — ${t.bars}小節`; els.lcdTag.textContent = 'REC'; startTimer(); }
   }
 
   function stopRecordingAndPlay(t){
@@ -624,18 +725,19 @@
     t.buffer = buffer;
     t.originalBuffer = buffer;
     t.reversed = false;
+    t.fx.reverse = false;
     startPlayback(t);
     renderTrackList();
-    if (t.id === selectedId) renderTimeline();
+    if (t.id === selectedId){ renderTimeline(); renderEffectsGrid(); }
   }
 
   function startPlayback(t){
-    if (!t.buffer) return;
+    if (!t.buffer || !t.fxChain) return;
     if (t.source){ try{ t.source.stop(); }catch(e){} }
     const src = audioCtx.createBufferSource();
     src.buffer = t.buffer;
     src.loop = true;
-    src.connect(masterMix);
+    src.connect(t.fxChain.input);
     src.start();
     t.source = src;
     t.playStartTime = audioCtx.currentTime;
@@ -655,8 +757,8 @@
     if (t.id === selectedId){ els.stateLine.textContent = `TRACK ${t.id} 停止中 — PLAYで再生 / CLEARで削除`; els.lcdTag.textContent = 'STOP'; }
   }
 
-  // ---------- transport ----------
-  els.btnRec.addEventListener('click', () => {
+  // ---------- transport actions (shared by buttons + MIDI mapping) ----------
+  function triggerRec(){
     const t = getSelected();
     if (t.state === 'rec-armed'){ t.state = t.buffer ? 'stopped' : 'empty'; updateTransportUI(); renderTrackList(); els.stateLine.textContent = `TRACK ${t.id} 待機中 — REC で次の小節頭から録音`; els.lcdTag.textContent = 'READY'; return; }
     if (!(t.state === 'empty' || t.state === 'stopped')) return;
@@ -666,9 +768,9 @@
     updateTransportUI(); renderTrackList();
     els.stateLine.textContent = `TRACK ${t.id} 録音待機中 — 次の小節頭で開始します`;
     els.lcdTag.textContent = 'ARMED';
-  });
+  }
 
-  els.btnPlay.addEventListener('click', () => {
+  function triggerPlay(){
     const t = getSelected();
     if (t.state === 'play-armed'){ t.state = 'stopped'; updateTransportUI(); renderTrackList(); return; }
     if (t.state !== 'stopped') return;
@@ -679,24 +781,50 @@
     } else {
       startPlayback(t);
     }
-  });
+  }
 
-  els.btnStop.addEventListener('click', () => {
+  function triggerStop(){
     const t = getSelected();
     if (t.state === 'playing') stopPlayback(t);
-  });
+  }
 
-  els.btnClear.addEventListener('click', () => {
+  function triggerClear(){
     const t = getSelected();
     if (t.source){ try{ t.source.stop(); }catch(e){} t.source = null; }
-    t.buffer = null; t.originalBuffer = null; t.reversed = false;
+    t.buffer = null; t.originalBuffer = null; t.reversed = false; t.fx.reverse = false;
     t.state = 'empty';
     if (t.id === selectedId) resetTimerDisplay();
-    updateTransportUI(); renderTrackList(); renderTimeline();
+    updateTransportUI(); renderTrackList(); renderTimeline(); renderEffectsGrid();
     els.stateLine.textContent = `TRACK ${t.id} 待機中 — REC で次の小節頭から録音`;
     els.lcdTag.textContent = 'READY';
-  });
+  }
 
+  function selectTrack(id){
+    selectedId = id;
+    buildTicks(); updateDialProgress(); updateTransportUI(); renderTrackList(); renderTimeline(); renderEffectsGrid();
+    const t = getSelected();
+    els.timelineTrackLabel.textContent = `TRACK ${t.id}`;
+    els.fxTrackLabel.textContent = `TRACK ${t.id}`;
+    if (t.state === 'playing'){ els.stateLine.textContent = `TRACK ${t.id} ループ再生中`; els.lcdTag.textContent = 'PLAY'; }
+    else if (t.state === 'stopped'){ els.stateLine.textContent = `TRACK ${t.id} 停止中 — PLAYで再生 / CLEARで削除`; els.lcdTag.textContent = 'STOP'; }
+    else { els.stateLine.textContent = `TRACK ${t.id} 待機中 — REC で次の小節頭から録音`; els.lcdTag.textContent = 'READY'; }
+  }
+
+  // ---------- learn-mode wrapper ----------
+  function onControlActivate(actionId, executeFn){
+    if (midiLearnActive){
+      pendingLearnAction = actionId;
+      console.log('[SYNC LOOPER] MIDI Learn armed for action:', actionId);
+      updateLearnStatusUI();
+      return;
+    }
+    executeFn();
+  }
+
+  els.btnRec.addEventListener('click', () => onControlActivate('transport:rec', triggerRec));
+  els.btnPlay.addEventListener('click', () => onControlActivate('transport:play', triggerPlay));
+  els.btnStop.addEventListener('click', () => onControlActivate('transport:stop', triggerStop));
+  els.btnClear.addEventListener('click', () => onControlActivate('transport:clear', triggerClear));
   els.btnResetBar.addEventListener('click', () => { pulseCount = 0; updateDialProgress(); });
 
   function updateTransportUI(){
@@ -713,7 +841,6 @@
       b.disabled = (t.state !== 'empty');
       b.classList.toggle('active', parseInt(b.dataset.bars,10) === t.bars);
     });
-    document.getElementById('fx-reverse-check');
   }
 
   // ---------- track list UI ----------
@@ -751,15 +878,8 @@
         </div>`;
     }).join('');
     [...els.trackList.querySelectorAll('.track-row')].forEach(row => {
-      row.addEventListener('click', () => {
-        selectedId = row.dataset.track;
-        buildTicks(); updateDialProgress(); updateTransportUI(); renderTrackList(); renderTimeline();
-        const t = getSelected();
-        els.timelineTrackLabel.textContent = `TRACK ${t.id}`;
-        if (t.state === 'playing'){ els.stateLine.textContent = `TRACK ${t.id} ループ再生中`; els.lcdTag.textContent = 'PLAY'; }
-        else if (t.state === 'stopped'){ els.stateLine.textContent = `TRACK ${t.id} 停止中 — PLAYで再生 / CLEARで削除`; els.lcdTag.textContent = 'STOP'; }
-        else { els.stateLine.textContent = `TRACK ${t.id} 待機中 — REC で次の小節頭から録音`; els.lcdTag.textContent = 'READY'; }
-      });
+      const id = row.dataset.track;
+      row.addEventListener('click', () => onControlActivate('track:'+id, () => selectTrack(id)));
     });
   }
 
@@ -768,18 +888,25 @@
     const btn = e.target.closest('.fx-btn');
     if (!btn) return;
     const fx = btn.dataset.fx;
-    fxState[fx] = !fxState[fx];
-    btn.classList.toggle('on', fxState[fx]);
-    applyFx(fx);
+    onControlActivate('fx:'+selectedId+':'+fx, () => toggleTrackFx(selectedId, fx));
   });
 
-  function applyFx(fx){
-    if (!audioCtx) return;
-    if (fx === 'reverb') reverbStage.setWet(fxState.reverb ? 0.28 : 0);
-    if (fx === 'delay') delayStage.setWet(fxState.delay ? 0.3 : 0);
-    if (fx === 'tape') tapeStage.setWet(fxState.tape ? 0.5 : 0);
-    if (fx === 'filter') filterNode.frequency.setTargetAtTime(fxState.filter ? 1400 : 20000, audioCtx.currentTime, 0.02);
-    if (fx === 'reverse') applyReverseToSelected();
+  function toggleTrackFx(trackId, fxName){
+    const t = tracks.find(tr => tr.id === trackId);
+    if (!t) return;
+    t.fx[fxName] = !t.fx[fxName];
+    applyTrackFx(t, fxName);
+    if (trackId === selectedId) renderEffectsGrid();
+    renderTrackList();
+  }
+
+  function applyTrackFx(t, fx){
+    if (!t.fxChain || !audioCtx) return;
+    if (fx === 'reverb') t.fxChain.reverbStage.setWet(t.fx.reverb ? 0.28 : 0);
+    if (fx === 'delay') t.fxChain.delayStage.setWet(t.fx.delay ? 0.3 : 0);
+    if (fx === 'tape') t.fxChain.tapeStage.setWet(t.fx.tape ? 0.5 : 0);
+    if (fx === 'filter') t.fxChain.filter.frequency.setTargetAtTime(t.fx.filter ? 1400 : 20000, audioCtx.currentTime, 0.02);
+    if (fx === 'reverse') applyReverseToTrack(t);
   }
 
   function reverseBuffer(buffer){
@@ -791,14 +918,105 @@
     return rev;
   }
 
-  function applyReverseToSelected(){
-    const t = getSelected();
+  function applyReverseToTrack(t){
     if (!t.buffer) return;
-    t.reversed = fxState.reverse;
+    t.reversed = t.fx.reverse;
     t.buffer = t.reversed ? reverseBuffer(t.originalBuffer) : t.originalBuffer;
     if (t.state === 'playing') startPlayback(t);
-    renderTrackList(); renderTimeline();
+    renderTrackList();
+    if (t.id === selectedId) renderTimeline();
   }
+
+  function renderEffectsGrid(){
+    const t = getSelected();
+    [...els.effectsGrid.querySelectorAll('.fx-btn')].forEach(btn => {
+      const fx = btn.dataset.fx;
+      btn.classList.toggle('on', !!t.fx[fx]);
+    });
+  }
+
+  // ---------- MIDI learn toggle ----------
+  els.btnMidiLearn.addEventListener('click', () => {
+    midiLearnActive = !midiLearnActive;
+    pendingLearnAction = null;
+    els.btnMidiLearn.classList.toggle('on', midiLearnActive);
+    console.log('[SYNC LOOPER] MIDI Learn mode:', midiLearnActive);
+    updateLearnStatusUI();
+  });
+
+  function actionLabel(action){
+    if (!action) return '';
+    if (action.startsWith('track:')) return `TRACK ${action.split(':')[1]} 選択`;
+    if (action === 'transport:rec') return 'REC';
+    if (action === 'transport:play') return 'PLAY';
+    if (action === 'transport:stop') return 'STOP';
+    if (action === 'transport:clear') return 'CLEAR';
+    if (action.startsWith('fx:')){
+      const parts = action.split(':');
+      return `TRACK ${parts[1]} ${parts[2].toUpperCase()}`;
+    }
+    return action;
+  }
+
+  function noteName(n){
+    const names = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    return names[n % 12] + (Math.floor(n / 12) - 1);
+  }
+
+  function triggerLabel(key){
+    const parts = key.split('_');
+    const type = parts[0], channel = parseInt(parts[1],10), num = parseInt(parts[2],10);
+    if (type === 'noteon') return `NOTE ${noteName(num)} (ch${channel+1})`;
+    return `CC${num} (ch${channel+1})`;
+  }
+
+  function updateLearnStatusUI(){
+    if (!midiLearnActive){ els.learnStatus.classList.add('hidden'); return; }
+    els.learnStatus.classList.remove('hidden');
+    if (pendingLearnAction){
+      els.learnStatus.textContent = `学習待機中: ${actionLabel(pendingLearnAction)} — MIDI機器のノート/CCを操作してください`;
+    } else {
+      els.learnStatus.textContent = 'MIDI LEARN 有効 — マッピングしたいボタンをクリックしてください';
+    }
+  }
+
+  function executeAction(action){
+    if (action.startsWith('track:')){ selectTrack(action.split(':')[1]); return; }
+    if (action === 'transport:rec'){ triggerRec(); return; }
+    if (action === 'transport:play'){ triggerPlay(); return; }
+    if (action === 'transport:stop'){ triggerStop(); return; }
+    if (action === 'transport:clear'){ triggerClear(); return; }
+    if (action.startsWith('fx:')){
+      const parts = action.split(':');
+      toggleTrackFx(parts[1], parts[2]);
+    }
+  }
+
+  function renderMappingsList(){
+    const entries = Object.entries(midiMappings);
+    if (!entries.length){
+      els.mappingsList.innerHTML = '<div class="mapping-empty">マッピングはまだありません。MIDI LEARNをオンにして、操作したいボタンをクリックしてからMIDI機器のノート/CCを送信してください。</div>';
+      return;
+    }
+    els.mappingsList.innerHTML = entries.map(([key,action]) => `
+      <div class="mapping-row">
+        <span class="mapping-trigger">${triggerLabel(key)}</span>
+        <span class="mapping-arrow">→</span>
+        <span class="mapping-action">${actionLabel(action)}</span>
+        <button class="mapping-remove" data-key="${key}">×</button>
+      </div>`).join('');
+    [...els.mappingsList.querySelectorAll('.mapping-remove')].forEach(btn => {
+      btn.addEventListener('click', () => {
+        delete midiMappings[btn.dataset.key];
+        saveMappings(); renderMappingsList();
+      });
+    });
+  }
+
+  els.btnClearMappings.addEventListener('click', () => {
+    midiMappings = {};
+    saveMappings(); renderMappingsList();
+  });
 
   // ---------- timeline waveform ----------
   function renderTimeline(){
@@ -833,7 +1051,6 @@
       const y1 = mid + min*mid*0.85, y2 = mid + max*mid*0.85;
       ctx2d.fillRect(x, Math.min(y1,y2), 1, Math.max(1, Math.abs(y2-y1)));
     }
-    // bar ticks
     ctx2d.strokeStyle = '#c1b9a6';
     ctx2d.lineWidth = 1;
     const barDur = (60/parseFloat(els.bpmNum.textContent || 120))*4;
@@ -862,6 +1079,7 @@
 
   updateTransportUI();
   renderTrackList();
+  renderMappingsList();
   console.log('[SYNC LOOPER] Initial render complete. App ready.');
   } catch (initErr) {
     console.error('[SYNC LOOPER] Fatal init error (script aborted):', initErr);
