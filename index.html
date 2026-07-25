@@ -49,10 +49,10 @@
     padding:20px;
     box-shadow:0 30px 60px -24px rgba(30,25,15,0.45), inset 0 1px 0 rgba(255,255,255,0.6);
   }
-  .brand-row{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .brand-row{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; flex-wrap:wrap; row-gap:8px; }
   .brand{ font-family:'Space Grotesk', sans-serif; font-weight:700; font-size:16px; }
   .brand-sub{ font-family:'JetBrains Mono', monospace; font-size:9px; letter-spacing:0.18em; color:var(--ink-dim); margin-top:2px; }
-  .brand-right{ display:flex; align-items:center; gap:10px; }
+  .brand-right{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; row-gap:8px; justify-content:flex-end; }
   .sync-mode-badge{ font-family:'JetBrains Mono', monospace; font-size:8px; letter-spacing:0.1em; color:var(--ink-dim); background:#f4f0e5; border:1px solid var(--line); border-radius:4px; padding:2px 6px; }
   .led-mini{ width:7px;height:7px;border-radius:50%; background:var(--red); opacity:0.25; transition:opacity .15s, box-shadow .15s; }
   .led-mini.on{ opacity:1; box-shadow:0 0 6px var(--red); }
@@ -411,7 +411,7 @@
 
 <script>
 (() => {
-  const APP_VERSION = 'v4';
+  const APP_VERSION = 'v5';
   console.log('[SYNC LOOPER] Script init start. Version:', APP_VERSION);
   window.addEventListener('error', (e) => {
     console.error('[SYNC LOOPER] window error event:', e.message, e.error);
