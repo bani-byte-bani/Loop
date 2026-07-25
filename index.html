@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LOOP CONSOLE</title>
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#c9862f">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
@@ -84,6 +86,22 @@
     font-weight:700;
   }
   .panic-btn:active{ background:var(--red); color:#fff; }
+  .fullscreen-btn{
+    font-family:'JetBrains Mono', monospace;
+    font-size:9px;
+    letter-spacing:0.1em;
+    padding:6px 10px;
+    border-radius:20px;
+    border:1px solid var(--line);
+    background:#f4f0e5;
+    color:var(--ink-dim);
+    cursor:pointer;
+  }
+  .fullscreen-btn.on{
+    background:var(--ink);
+    color:var(--body-a);
+    border-color:var(--ink);
+  }
   .learn-status{
     font-family:'JetBrains Mono', monospace;
     font-size:10px;
@@ -234,6 +252,7 @@
       <button class="panic-btn" id="btnPanic">PANIC</button>
       <button class="learn-toggle" id="btnKeyLearn">KEY LEARN</button>
       <button class="learn-toggle" id="btnMidiLearn">MIDI LEARN</button>
+      <button class="fullscreen-btn" id="btnFullscreen">⛶ FULLSCREEN</button>
       <span class="led-mini" id="syncLed"></span>
     </div>
   </div>
@@ -422,6 +441,7 @@
     btnClear: document.getElementById('btnClear'),
     btnResetBar: document.getElementById('btnResetBar'),
     btnPanic: document.getElementById('btnPanic'),
+    btnFullscreen: document.getElementById('btnFullscreen'),
     outputEl: document.getElementById('outputEl'),
     trackList: document.getElementById('trackList'),
     effectsGrid: document.getElementById('effectsGrid'),
@@ -725,6 +745,7 @@
       await connect();
       els.setupPanel.classList.add('hidden');
       els.performPanel.classList.remove('hidden');
+      requestWakeLock();
       updateBpmModeUI();
       if (syncMode === 'standalone'){
         els.bpmInput.value = standaloneBpm;
@@ -1545,11 +1566,70 @@
   renderMappingsList();
   renderKeyMappingsList();
   console.log('[SYNC LOOPER] Initial render complete. App ready.');
+
+  // ---------- 誤操作防止: 未保存の録音がある状態でのタブ離脱を警告 ----------
+  function hasActiveSessionContent(){
+    return tracks.some(t => t.buffer || ['recording','rec-armed','play-armed','stop-armed'].includes(t.state));
+  }
+  window.addEventListener('beforeunload', (e) => {
+    if (!hasActiveSessionContent()) return;
+    console.log('[SYNC LOOPER] beforeunload: active session content detected, warning before close');
+    e.preventDefault();
+    e.returnValue = '';
+  });
+
+  // ---------- フルスクリーン切り替え ----------
+  els.btnFullscreen.addEventListener('click', async () => {
+    try{
+      if (!document.fullscreenElement){
+        await document.documentElement.requestFullscreen();
+        console.log('[SYNC LOOPER] Entered fullscreen');
+      } else {
+        await document.exitFullscreen();
+        console.log('[SYNC LOOPER] Exited fullscreen');
+      }
+    } catch(err){
+      console.error('[SYNC LOOPER] Fullscreen toggle failed:', err.name, err.message);
+    }
+  });
+  document.addEventListener('fullscreenchange', () => {
+    els.btnFullscreen.classList.toggle('on', !!document.fullscreenElement);
+  });
+
+  // ---------- Screen Wake Lock: パフォーマンス中の画面スリープを防止 ----------
+  let wakeLock = null;
+  async function requestWakeLock(){
+    if (!('wakeLock' in navigator)) return;
+    try{
+      wakeLock = await navigator.wakeLock.request('screen');
+      console.log('[SYNC LOOPER] Wake Lock acquired');
+      wakeLock.addEventListener('release', () => {
+        console.log('[SYNC LOOPER] Wake Lock released');
+      });
+    } catch(err){
+      console.error('[SYNC LOOPER] Wake Lock request failed:', err.name, err.message);
+    }
+  }
+  document.addEventListener('visibilitychange', () => {
+    // Wake LockはタブがhiddenになるとOS側で自動解放されるため、再びvisibleになったら再取得する
+    if (document.visibilityState === 'visible' && !els.performPanel.classList.contains('hidden')){
+      requestWakeLock();
+    }
+  });
   } catch (initErr) {
     console.error('[SYNC LOOPER] Fatal init error (script aborted):', initErr);
     alert('[SYNC LOOPER] 初期化に失敗しました: ' + initErr.name + ' - ' + initErr.message);
   }
 })();
+</script>
+<script>
+  if ('serviceWorker' in navigator){
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js')
+        .then((reg) => console.log('[SYNC LOOPER] Service Worker registered:', reg.scope))
+        .catch((err) => console.error('[SYNC LOOPER] Service Worker registration failed:', err));
+    });
+  }
 </script>
 </body>
 </html>
