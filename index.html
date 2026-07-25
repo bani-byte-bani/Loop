@@ -76,17 +76,17 @@
   @keyframes learnpulse{ 50%{ opacity:0.7; } }
   .panic-btn{
     font-family:'JetBrains Mono', monospace;
-    font-size:9px;
-    letter-spacing:0.12em;
-    padding:6px 12px;
-    border-radius:20px;
+    font-size:8px;
+    letter-spacing:0.08em;
+    padding:5px 9px;
+    border-radius:6px;
     border:1px solid var(--red);
-    background:#f7e2df;
-    color:var(--red);
+    background:var(--red);
+    color:#fff;
     cursor:pointer;
     font-weight:700;
   }
-  .panic-btn:active{ background:var(--red); color:#fff; }
+  .panic-btn:active{ background:#8f2a20; border-color:#8f2a20; }
   .fullscreen-btn{
     font-family:'JetBrains Mono', monospace;
     font-size:9px;
@@ -411,7 +411,7 @@
 
 <script>
 (() => {
-  const APP_VERSION = 'v5';
+  const APP_VERSION = 'v6';
   console.log('[SYNC LOOPER] Script init start. Version:', APP_VERSION);
   window.addEventListener('error', (e) => {
     console.error('[SYNC LOOPER] window error event:', e.message, e.error);
