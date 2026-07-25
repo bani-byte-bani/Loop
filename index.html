@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LOOP CONSOLE</title>
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#c9862f">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
@@ -25,6 +27,7 @@
     --pink:#c2588f;
     --blue:#3e6bcf;
     --amber:#c9862f;
+    --active-track-color:var(--red);
   }
   *{box-sizing:border-box;}
   body{
@@ -84,6 +87,22 @@
     font-weight:700;
   }
   .panic-btn:active{ background:var(--red); color:#fff; }
+  .fullscreen-btn{
+    font-family:'JetBrains Mono', monospace;
+    font-size:9px;
+    letter-spacing:0.1em;
+    padding:6px 10px;
+    border-radius:20px;
+    border:1px solid var(--line);
+    background:#f4f0e5;
+    color:var(--ink-dim);
+    cursor:pointer;
+  }
+  .fullscreen-btn.on{
+    background:var(--ink);
+    color:var(--body-a);
+    border-color:var(--ink);
+  }
   .learn-status{
     font-family:'JetBrains Mono', monospace;
     font-size:10px;
@@ -113,6 +132,17 @@
 
   .card{ background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px; }
   .card h2{ margin:0 0 12px; font-family:'JetBrains Mono', monospace; font-size:10px; letter-spacing:0.16em; color:var(--ink-dim); text-transform:uppercase; }
+  .card.collapsible{ padding:16px; }
+  .card.collapsible summary{
+    margin:0; font-family:'JetBrains Mono', monospace; font-size:10px; letter-spacing:0.16em;
+    color:var(--ink-dim); text-transform:uppercase; cursor:pointer; list-style:none;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .card.collapsible summary::-webkit-details-marker{ display:none; }
+  .card.collapsible summary::after{ content:'▸'; font-size:10px; transition:transform .15s ease; }
+  .card.collapsible[open] summary::after{ transform:rotate(90deg); }
+  .card.collapsible[open] summary{ margin-bottom:12px; }
+  .card.collapsible[open] > *:not(summary){ margin-top:0; }
 
   .lcd{ background:var(--screen-bg); border-radius:6px; padding:9px 13px; display:flex; align-items:baseline; justify-content:space-between; box-shadow:inset 0 2px 6px rgba(0,0,0,0.6); margin-bottom:16px; }
   .lcd-time{ font-family:'JetBrains Mono', monospace; font-size:18px; color:var(--screen-fg); letter-spacing:0.05em; text-shadow:0 0 8px rgba(111,199,255,0.5); font-variant-numeric:tabular-nums; }
@@ -175,36 +205,41 @@
   .track-row{ display:flex; align-items:center; gap:12px; padding:12px 4px; border-bottom:1px solid var(--line); cursor:pointer; }
   .track-row:last-child{ border-bottom:none; }
   .track-radio{ width:20px; height:20px; border-radius:50%; border:2px solid var(--ink-faint); flex:none; position:relative; }
-  .track-row.selected .track-radio{ border-color:var(--blue); }
-  .track-row.selected .track-radio::after{ content:''; position:absolute; inset:3px; border-radius:50%; background:var(--blue); }
-  .track-letter{ font-family:'Space Grotesk', sans-serif; font-weight:700; font-size:20px; width:20px; flex:none; }
+  .track-row.selected .track-radio{ border-color:var(--track-color, var(--blue)); }
+  .track-row.selected .track-radio::after{ content:''; position:absolute; inset:3px; border-radius:50%; background:var(--track-color, var(--blue)); }
+  .track-letter{ font-family:'Space Grotesk', sans-serif; font-weight:700; font-size:20px; width:20px; flex:none; color:var(--track-color, var(--ink)); }
   .track-body{ flex:1; min-width:0; }
   .track-mini-bars{ display:flex; gap:2px; height:16px; align-items:flex-end; margin-bottom:5px; }
   .track-mini-bars span{ flex:1; background:var(--ink-faint); border-radius:1px; min-height:3px; }
-  .track-mini-bars span.filled{ background:var(--ink-dim); }
+  .track-mini-bars span.filled{ background:var(--track-color, var(--ink-dim)); }
   .track-meta{ display:flex; justify-content:space-between; font-family:'JetBrains Mono', monospace; font-size:10px; color:var(--ink-dim); }
   .track-state-dot{ width:6px; height:6px; border-radius:50%; background:var(--ink-faint); flex:none; }
   .track-state-dot.rec{ background:var(--red); box-shadow:0 0 5px var(--red); }
   .track-state-dot.play{ background:var(--green); box-shadow:0 0 5px var(--green); }
   .track-state-dot.armed{ background:var(--amber); box-shadow:0 0 5px var(--amber); }
 
+  /* 選択中トラックの色に連動するカード(Track Select / Effects) */
+  .synced-card{ border-left:3px solid var(--active-track-color); transition:border-color .15s ease; }
+  .synced-card h2{ color:var(--active-track-color); transition:color .15s ease; }
+
   /* effects */
   .effects-grid{ display:grid; grid-template-columns:repeat(5,1fr); gap:8px; }
   .fx-cell{ display:flex; flex-direction:column; gap:6px; }
   .fx-toggle{ background:#f4f0e5; border:1px solid var(--line); border-radius:10px; padding:12px 4px 8px; cursor:pointer; text-align:center; position:relative; width:100%; }
   .fx-toggle .fx-dot{ width:6px; height:6px; border-radius:50%; background:var(--ink-faint); margin:0 auto 6px; }
-  .fx-toggle.on .fx-dot{ background:var(--amber); box-shadow:0 0 6px var(--amber); }
-  .fx-toggle.on{ background:#f7eede; border-color:var(--amber); }
+  .fx-toggle.on .fx-dot{ background:var(--active-track-color); box-shadow:0 0 6px var(--active-track-color); }
+  .fx-toggle.on{ background:#f7eede; border-color:var(--active-track-color); }
   .fx-toggle.pending{ animation:fxpendingpulse 0.6s ease-in-out infinite; }
   @keyframes fxpendingpulse{ 50%{ box-shadow:0 0 0 2px var(--amber) inset; } }
-  .fx-amount{ width:100%; height:14px; accent-color:var(--amber); cursor:pointer; }
+  .fx-amount{ width:100%; height:14px; accent-color:var(--active-track-color); cursor:pointer; }
   .fx-amount-spacer{ height:14px; }
   .fx-icon{ width:22px; height:22px; margin:0 auto 6px; }
   .fx-icon svg{ width:100%; height:100%; stroke:var(--ink); fill:none; stroke-width:1.6; }
   .fx-label{ font-family:'JetBrains Mono', monospace; font-size:8px; letter-spacing:0.08em; color:var(--ink-dim); }
   .fx-caption{ text-align:center; font-family:'JetBrains Mono', monospace; font-size:9px; color:var(--ink-dim); letter-spacing:0.1em; margin-top:10px; }
 
-  /* timeline */
+  /* timeline (Track Selectカードに統合) */
+  .timeline-caption{ margin-top:14px; margin-bottom:6px; font-family:'JetBrains Mono', monospace; font-size:9px; color:var(--ink-dim); letter-spacing:0.1em; }
   .timeline-wrap{ position:relative; height:90px; background:#f4f0e5; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
   .timeline-wrap canvas{ width:100%; height:100%; display:block; }
   .playhead{ position:absolute; top:0; bottom:0; width:1px; background:var(--red); left:0; }
@@ -234,6 +269,7 @@
       <button class="panic-btn" id="btnPanic">PANIC</button>
       <button class="learn-toggle" id="btnKeyLearn">KEY LEARN</button>
       <button class="learn-toggle" id="btnMidiLearn">MIDI LEARN</button>
+      <button class="fullscreen-btn" id="btnFullscreen">⛶ FULLSCREEN</button>
       <span class="led-mini" id="syncLed"></span>
     </div>
   </div>
@@ -311,14 +347,20 @@
         <div class="reset-row"><button id="btnResetBar">小節頭を今にリセット(手動同期)</button></div>
       </div>
 
-      <div class="card">
+      <div class="card synced-card" id="trackPanelCard">
         <h2>Track Select</h2>
         <div id="trackList"></div>
+        <div class="timeline-caption">波形 — <span id="timelineTrackLabel">TRACK A</span></div>
+        <div class="timeline-wrap">
+          <canvas id="waveCanvas"></canvas>
+          <div class="playhead hidden" id="playhead"></div>
+          <div class="timeline-empty" id="timelineEmpty">EMPTY</div>
+        </div>
       </div>
     </div>
 
     <div style="height:16px;"></div>
-    <div class="card">
+    <div class="card synced-card" id="fxCard">
       <h2>Effects — <span id="fxTrackLabel">TRACK A</span></h2>
       <div class="effects-grid" id="effectsGrid">
         <div class="fx-cell" data-fx="reverb">
@@ -347,16 +389,6 @@
 
     <div style="height:16px;"></div>
     <div class="card">
-      <h2>Timeline — <span id="timelineTrackLabel">TRACK A</span></h2>
-      <div class="timeline-wrap">
-        <canvas id="waveCanvas"></canvas>
-        <div class="playhead hidden" id="playhead"></div>
-        <div class="timeline-empty" id="timelineEmpty">EMPTY</div>
-      </div>
-    </div>
-
-    <div style="height:16px;"></div>
-    <div class="card">
       <h2>MIDI Mappings</h2>
       <div id="mappingsList"></div>
       <div style="height:10px;"></div>
@@ -364,22 +396,23 @@
     </div>
 
     <div style="height:16px;"></div>
-    <div class="card">
-      <h2>Keyboard Mappings</h2>
+    <details class="card collapsible" id="keyMappingsCard">
+      <summary>Keyboard Mappings</summary>
       <div id="keyMappingsList"></div>
       <div style="height:10px;"></div>
       <button class="btn-slab" id="btnResetKeyMappings">デフォルト配列に戻す</button>
-    </div>
+    </details>
   </div>
 
-  <div class="footer">LOOP CONSOLE — PERSONAL BUILD</div>
+  <div class="footer" id="footerLine">LOOP CONSOLE</div>
 </div>
 
 <audio id="outputEl" autoplay></audio>
 
 <script>
 (() => {
-  console.log('[SYNC LOOPER] Script init start');
+  const APP_VERSION = 'v4';
+  console.log('[SYNC LOOPER] Script init start. Version:', APP_VERSION);
   window.addEventListener('error', (e) => {
     console.error('[SYNC LOOPER] window error event:', e.message, e.error);
   });
@@ -422,6 +455,8 @@
     btnClear: document.getElementById('btnClear'),
     btnResetBar: document.getElementById('btnResetBar'),
     btnPanic: document.getElementById('btnPanic'),
+    btnFullscreen: document.getElementById('btnFullscreen'),
+    footerLine: document.getElementById('footerLine'),
     outputEl: document.getElementById('outputEl'),
     trackList: document.getElementById('trackList'),
     effectsGrid: document.getElementById('effectsGrid'),
@@ -437,6 +472,7 @@
     btnClearMappings: document.getElementById('btnClearMappings'),
     keyMappingsList: document.getElementById('keyMappingsList'),
     btnResetKeyMappings: document.getElementById('btnResetKeyMappings'),
+    keyMappingsCard: document.getElementById('keyMappingsCard'),
   };
 
   console.log('[SYNC LOOPER] DOM elements resolved:', els);
@@ -445,6 +481,7 @@
     console.error('[SYNC LOOPER] Missing DOM elements:', missingEls);
     alert('[SYNC LOOPER] 初期化エラー: 以下のIDの要素が見つかりません -> ' + missingEls.join(', '));
   }
+  els.footerLine.textContent = `LOOP CONSOLE — ${APP_VERSION}`;
 
   const PPQ = 24;
   const PULSES_PER_BAR = PPQ * 4;
@@ -532,6 +569,14 @@
   });
 
   const FX_NAMES = ['reverb','delay','filter','reverse','tape'];
+
+  // ---------- トラック色分け ----------
+  const TRACK_COLOR_VARS = { A:'--red', B:'--green', C:'--pink', D:'--blue' };
+  function applyActiveTrackColor(id){
+    const varName = TRACK_COLOR_VARS[id] || '--amber';
+    document.documentElement.style.setProperty('--active-track-color', `var(${varName})`);
+    console.log('[SYNC LOOPER] Active track color synced:', id, '->', varName);
+  }
 
   const tracks = ['A','B','C','D'].map(id => ({
     id, bars:4, buffer:null, originalBuffer:null, reversed:false,
@@ -725,6 +770,7 @@
       await connect();
       els.setupPanel.classList.add('hidden');
       els.performPanel.classList.remove('hidden');
+      requestWakeLock();
       updateBpmModeUI();
       if (syncMode === 'standalone'){
         els.bpmInput.value = standaloneBpm;
@@ -1107,6 +1153,7 @@
 
   function selectTrack(id){
     selectedId = id;
+    applyActiveTrackColor(id);
     buildTicks(); updateDialProgress(); updateTransportUI(); renderTrackList(); renderTimeline(); renderEffectsGrid();
     const t = getSelected();
     els.timelineTrackLabel.textContent = `TRACK ${t.id}`;
@@ -1187,7 +1234,7 @@
       const dur = t.buffer ? formatTime(t.buffer.duration*1000) : '--:--';
       const label = t.buffer ? `LOOP ${t.id}${t.reversed ? ' (REV)' : ''}` : 'EMPTY';
       return `
-        <div class="track-row ${t.id===selectedId?'selected':''}" data-track="${t.id}">
+        <div class="track-row ${t.id===selectedId?'selected':''}" data-track="${t.id}" style="--track-color:var(${TRACK_COLOR_VARS[t.id]})">
           <span class="track-radio"></span>
           <span class="track-letter">${t.id}</span>
           <div class="track-body">
@@ -1480,6 +1527,10 @@
     saveKeyMappings(); renderKeyMappingsList();
   });
 
+  els.keyMappingsCard.addEventListener('toggle', () => {
+    console.log('[SYNC LOOPER] Keyboard Mappings panel', els.keyMappingsCard.open ? 'expanded' : 'collapsed');
+  });
+
   // ---------- timeline waveform ----------
   function renderTimeline(){
     const t = getSelected();
@@ -1540,16 +1591,76 @@
     requestAnimationFrame(playheadLoop);
   }
 
+  applyActiveTrackColor(selectedId);
   updateTransportUI();
   renderTrackList();
   renderMappingsList();
   renderKeyMappingsList();
   console.log('[SYNC LOOPER] Initial render complete. App ready.');
+
+  // ---------- 誤操作防止: 未保存の録音がある状態でのタブ離脱を警告 ----------
+  function hasActiveSessionContent(){
+    return tracks.some(t => t.buffer || ['recording','rec-armed','play-armed','stop-armed'].includes(t.state));
+  }
+  window.addEventListener('beforeunload', (e) => {
+    if (!hasActiveSessionContent()) return;
+    console.log('[SYNC LOOPER] beforeunload: active session content detected, warning before close');
+    e.preventDefault();
+    e.returnValue = '';
+  });
+
+  // ---------- フルスクリーン切り替え ----------
+  els.btnFullscreen.addEventListener('click', async () => {
+    try{
+      if (!document.fullscreenElement){
+        await document.documentElement.requestFullscreen();
+        console.log('[SYNC LOOPER] Entered fullscreen');
+      } else {
+        await document.exitFullscreen();
+        console.log('[SYNC LOOPER] Exited fullscreen');
+      }
+    } catch(err){
+      console.error('[SYNC LOOPER] Fullscreen toggle failed:', err.name, err.message);
+    }
+  });
+  document.addEventListener('fullscreenchange', () => {
+    els.btnFullscreen.classList.toggle('on', !!document.fullscreenElement);
+  });
+
+  // ---------- Screen Wake Lock: パフォーマンス中の画面スリープを防止 ----------
+  let wakeLock = null;
+  async function requestWakeLock(){
+    if (!('wakeLock' in navigator)) return;
+    try{
+      wakeLock = await navigator.wakeLock.request('screen');
+      console.log('[SYNC LOOPER] Wake Lock acquired');
+      wakeLock.addEventListener('release', () => {
+        console.log('[SYNC LOOPER] Wake Lock released');
+      });
+    } catch(err){
+      console.error('[SYNC LOOPER] Wake Lock request failed:', err.name, err.message);
+    }
+  }
+  document.addEventListener('visibilitychange', () => {
+    // Wake LockはタブがhiddenになるとOS側で自動解放されるため、再びvisibleになったら再取得する
+    if (document.visibilityState === 'visible' && !els.performPanel.classList.contains('hidden')){
+      requestWakeLock();
+    }
+  });
   } catch (initErr) {
     console.error('[SYNC LOOPER] Fatal init error (script aborted):', initErr);
     alert('[SYNC LOOPER] 初期化に失敗しました: ' + initErr.name + ' - ' + initErr.message);
   }
 })();
+</script>
+<script>
+  if ('serviceWorker' in navigator){
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js')
+        .then((reg) => console.log('[SYNC LOOPER] Service Worker registered:', reg.scope))
+        .catch((err) => console.error('[SYNC LOOPER] Service Worker registration failed:', err));
+    });
+  }
 </script>
 </body>
 </html>
