@@ -218,9 +218,11 @@
   .track-state-dot.play{ background:var(--green); box-shadow:0 0 5px var(--green); }
   .track-state-dot.armed{ background:var(--amber); box-shadow:0 0 5px var(--amber); }
 
+  /* 選択中トラックの色に連動するカード(Track Select / Effects) */
+  .synced-card{ border-left:3px solid var(--active-track-color); transition:border-color .15s ease; }
+  .synced-card h2{ color:var(--active-track-color); transition:color .15s ease; }
+
   /* effects */
-  .fx-card{ border-left:3px solid var(--active-track-color); transition:border-color .15s ease; }
-  .fx-card h2{ color:var(--active-track-color); transition:color .15s ease; }
   .effects-grid{ display:grid; grid-template-columns:repeat(5,1fr); gap:8px; }
   .fx-cell{ display:flex; flex-direction:column; gap:6px; }
   .fx-toggle{ background:#f4f0e5; border:1px solid var(--line); border-radius:10px; padding:12px 4px 8px; cursor:pointer; text-align:center; position:relative; width:100%; }
@@ -236,7 +238,8 @@
   .fx-label{ font-family:'JetBrains Mono', monospace; font-size:8px; letter-spacing:0.08em; color:var(--ink-dim); }
   .fx-caption{ text-align:center; font-family:'JetBrains Mono', monospace; font-size:9px; color:var(--ink-dim); letter-spacing:0.1em; margin-top:10px; }
 
-  /* timeline */
+  /* timeline (Track Selectカードに統合) */
+  .timeline-caption{ margin-top:14px; margin-bottom:6px; font-family:'JetBrains Mono', monospace; font-size:9px; color:var(--ink-dim); letter-spacing:0.1em; }
   .timeline-wrap{ position:relative; height:90px; background:#f4f0e5; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
   .timeline-wrap canvas{ width:100%; height:100%; display:block; }
   .playhead{ position:absolute; top:0; bottom:0; width:1px; background:var(--red); left:0; }
@@ -344,14 +347,20 @@
         <div class="reset-row"><button id="btnResetBar">小節頭を今にリセット(手動同期)</button></div>
       </div>
 
-      <div class="card">
+      <div class="card synced-card" id="trackPanelCard">
         <h2>Track Select</h2>
         <div id="trackList"></div>
+        <div class="timeline-caption">波形 — <span id="timelineTrackLabel">TRACK A</span></div>
+        <div class="timeline-wrap">
+          <canvas id="waveCanvas"></canvas>
+          <div class="playhead hidden" id="playhead"></div>
+          <div class="timeline-empty" id="timelineEmpty">EMPTY</div>
+        </div>
       </div>
     </div>
 
     <div style="height:16px;"></div>
-    <div class="card fx-card" id="fxCard">
+    <div class="card synced-card" id="fxCard">
       <h2>Effects — <span id="fxTrackLabel">TRACK A</span></h2>
       <div class="effects-grid" id="effectsGrid">
         <div class="fx-cell" data-fx="reverb">
@@ -380,16 +389,6 @@
 
     <div style="height:16px;"></div>
     <div class="card">
-      <h2>Timeline — <span id="timelineTrackLabel">TRACK A</span></h2>
-      <div class="timeline-wrap">
-        <canvas id="waveCanvas"></canvas>
-        <div class="playhead hidden" id="playhead"></div>
-        <div class="timeline-empty" id="timelineEmpty">EMPTY</div>
-      </div>
-    </div>
-
-    <div style="height:16px;"></div>
-    <div class="card">
       <h2>MIDI Mappings</h2>
       <div id="mappingsList"></div>
       <div style="height:10px;"></div>
@@ -412,7 +411,7 @@
 
 <script>
 (() => {
-  const APP_VERSION = 'v3';
+  const APP_VERSION = 'v4';
   console.log('[SYNC LOOPER] Script init start. Version:', APP_VERSION);
   window.addEventListener('error', (e) => {
     console.error('[SYNC LOOPER] window error event:', e.message, e.error);
