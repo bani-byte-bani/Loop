@@ -411,7 +411,7 @@
 
 <script>
 (() => {
-  const APP_VERSION = 'v6';
+  const APP_VERSION = 'v7';
   console.log('[SYNC LOOPER] Script init start. Version:', APP_VERSION);
   window.addEventListener('error', (e) => {
     console.error('[SYNC LOOPER] window error event:', e.message, e.error);
@@ -513,18 +513,27 @@
 
   function pulseIntervalMs(){ return 60000 / standaloneBpm / PPQ; }
 
+  // タブが非アクティブになるとsetTimeoutが間引かれ、復帰時に「遅れを取り戻す」ために
+  // 大量のパルスが一気に発火して録音/再生が誤作動する。一定以上遅れたら追いつきを諦めて現在時刻に再同期する。
+  const MAX_CLOCK_CATCHUP_MS = 500;
+
   function scheduleInternalPulse(){
-    const now = performance.now();
-    const delay = Math.max(0, internalClockNextTime - now);
+    const delay = Math.max(0, internalClockNextTime - performance.now());
     internalClockTimer = setTimeout(() => {
       handleClockPulse();
       internalClockNextTime += pulseIntervalMs();
+      const behindMs = performance.now() - internalClockNextTime;
+      if (behindMs > MAX_CLOCK_CATCHUP_MS){
+        console.log('[SYNC LOOPER] Internal clock fell behind by', Math.round(behindMs), 'ms — resyncing');
+        internalClockNextTime = performance.now();
+      }
       scheduleInternalPulse();
     }, delay);
   }
 
   function startInternalClock(){
     console.log('[SYNC LOOPER] Starting internal clock at', standaloneBpm, 'BPM');
+    if (internalClockTimer){ clearTimeout(internalClockTimer); internalClockTimer = null; }
     pulseCount = 0;
     running = true;
     setSyncUI(true);
@@ -569,6 +578,26 @@
   });
 
   const FX_NAMES = ['reverb','delay','filter','reverse','tape'];
+  // 「次の小節頭で確定する」予約状態のまとめ(表示・判定で共用)
+  const ARMED_STATES = ['rec-armed','play-armed','stop-armed'];
+
+  function escapeHtml(str){
+    return String(str).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+  }
+
+  // デバイス名やMIDI機器名は機器由来の任意文字列なので、innerHTMLで組み立てずDOM APIで流し込む
+  function fillSelect(selectEl, options){
+    selectEl.innerHTML = '';
+    for (const { value, label } of options){
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      selectEl.appendChild(opt);
+    }
+  }
+
+  // 剰余を必ず非負にする(小節頭リセットでpulseCountが基準より小さくなり得るため)
+  function mod(a, n){ return ((a % n) + n) % n; }
 
   // ---------- トラック色分け ----------
   const TRACK_COLOR_VARS = { A:'--red', B:'--green', C:'--pink', D:'--blue' };
@@ -589,6 +618,37 @@
   }));
   let selectedId = 'A';
   const getSelected = () => tracks.find(t => t.id === selectedId);
+
+  // 録音バッファ(recordedChunks)は全トラック共有のため、録音は同時に1トラックのみ。
+  // ワークレットからの取り込み先判定にもこのIDを使う。
+  let recordingTrackId = null;
+
+  // トラック状態 → 表示文言を一元管理(各所に散らばっていた同じ文言の重複を排除)
+  function describeTrackState(t){
+    switch (t.state){
+      case 'playing':    return { line:`TRACK ${t.id} ループ再生中`, tag:'PLAY' };
+      case 'stopped':    return { line:`TRACK ${t.id} 停止中 — PLAYで再生 / CLEARで削除`, tag:'STOP' };
+      case 'recording':  return { line:`TRACK ${t.id} 録音中 — ${t.bars}小節`, tag:'REC' };
+      case 'rec-armed':  return { line: t.recAlignRefId
+                                    ? `TRACK ${t.id} 録音待機中 — TRACK ${t.recAlignRefId} の周回頭で開始します`
+                                    : `TRACK ${t.id} 録音待機中 — 次の小節頭で開始します`, tag:'ARMED' };
+      case 'play-armed': return { line:`TRACK ${t.id} 再生待機中 — 次の小節頭で開始します`, tag:'ARMED' };
+      case 'stop-armed': return { line:`TRACK ${t.id} 停止待機中 — 次の小節頭で停止します`, tag:'STOP≈' };
+      default:           return { line:`TRACK ${t.id} 待機中 — REC で次の小節頭から録音`, tag:'READY' };
+    }
+  }
+  // 選択中トラックのときだけステータス行とLCDタグを更新する
+  function updateStatusLine(t){
+    if (t.id !== selectedId) return;
+    const { line, tag } = describeTrackState(t);
+    els.stateLine.textContent = line;
+    els.lcdTag.textContent = tag;
+  }
+  // パフォーマンス中の警告はsetup画面内のerrorLineに出しても見えないため、ステータス行に出す
+  function showTransportMessage(msg){
+    els.stateLine.textContent = msg;
+    console.log('[SYNC LOOPER] Transport message:', msg);
+  }
 
   // ---------- MIDI mapping state ----------
   let midiLearnActive = false;
@@ -679,7 +739,7 @@
     els.dialProgress.classList.remove('rec','play','armed');
     if (t.state === 'recording') els.dialProgress.classList.add('rec');
     else if (t.state === 'playing') els.dialProgress.classList.add('play');
-    else if (t.state === 'rec-armed' || t.state === 'play-armed' || t.state === 'stop-armed') els.dialProgress.classList.add('armed');
+    else if (ARMED_STATES.includes(t.state)) els.dialProgress.classList.add('armed');
 
     const barIdx = Math.floor(pos / PULSES_PER_BAR) + 1;
     const beatIdx = Math.floor((pos % PULSES_PER_BAR) / PPQ) + 1;
@@ -720,14 +780,16 @@
       const outs = devices.filter(d => d.kind === 'audiooutput');
       console.log('[SYNC LOOPER] audioinput count=', ins.length, 'audiooutput count=', outs.length);
 
-      els.audioInSelect.innerHTML = ins.map(d => `<option value="${d.deviceId}">${d.label || 'マイク/入力'}</option>`).join('');
-      els.audioOutSelect.innerHTML = outs.length ? outs.map(d => `<option value="${d.deviceId}">${d.label || '出力'}</option>`).join('') : '<option value="">既定の出力</option>';
+      fillSelect(els.audioInSelect, ins.map(d => ({ value:d.deviceId, label:d.label || 'マイク/入力' })));
+      fillSelect(els.audioOutSelect, outs.length
+        ? outs.map(d => ({ value:d.deviceId, label:d.label || '出力' }))
+        : [{ value:'', label:'既定の出力' }]);
       els.audioInSelect.disabled = false; els.audioOutSelect.disabled = false;
       console.log('[SYNC LOOPER] Audio select elements populated');
 
       if (!navigator.requestMIDIAccess){
         console.error('[SYNC LOOPER] navigator.requestMIDIAccess is not available in this browser');
-        els.midiSelect.innerHTML = '<option value="">なし(このブラウザはWeb MIDI未対応)</option>';
+        fillSelect(els.midiSelect, [{ value:'', label:'なし(このブラウザはWeb MIDI未対応)' }]);
         els.midiSelect.disabled = false;
       } else {
         console.log('[SYNC LOOPER] requestMIDIAccess start');
@@ -735,14 +797,11 @@
         console.log('[SYNC LOOPER] requestMIDIAccess success', midiAccess);
         const midiIns = Array.from(midiAccess.inputs.values());
         console.log('[SYNC LOOPER] MIDI input count=', midiIns.length, midiIns.map(m => m.name));
-        const noneOption = '<option value="">なし(MIDIを使わない)</option>';
-        if (midiIns.length === 0){
-          els.midiSelect.innerHTML = noneOption;
-          els.midiSelect.disabled = false;
-          if (syncMode === 'external') showError('MIDI入力デバイスが見つかりません。外部クロックモードを使う場合はCircuit等を接続してから再度お試しください。');
-        } else {
-          els.midiSelect.innerHTML = noneOption + midiIns.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
-          els.midiSelect.disabled = false;
+        const noneOption = { value:'', label:'なし(MIDIを使わない)' };
+        fillSelect(els.midiSelect, [noneOption, ...midiIns.map(m => ({ value:m.id, label:m.name }))]);
+        els.midiSelect.disabled = false;
+        if (midiIns.length === 0 && syncMode === 'external'){
+          showError('MIDI入力デバイスが見つかりません。外部クロックモードを使う場合はCircuit等を接続してから再度お試しください。');
         }
       }
       els.btnGrant.classList.add('hidden'); els.btnConnect.classList.remove('hidden');
@@ -878,10 +937,12 @@
     `;
     const blobUrl = URL.createObjectURL(new Blob([workletCode], {type:'application/javascript'}));
     await audioCtx.audioWorklet.addModule(blobUrl);
+    URL.revokeObjectURL(blobUrl);
     workletNode = new AudioWorkletNode(audioCtx, 'recorder-processor');
     workletNode.port.onmessage = (e) => {
-      const t = getSelected();
-      if (t.state === 'recording') recordedChunks.push(e.data);
+      // 「選択中トラック」ではなく「録音中トラック」を基準にする。
+      // (録音中に別トラックを選ぶと取り込みが止まり、ループが尻切れになっていた)
+      if (recordingTrackId !== null) recordedChunks.push(e.data);
     };
     sourceNode.connect(workletNode);
 
@@ -939,6 +1000,17 @@
   }
   function setSyncUI(on){ els.syncLed.classList.toggle('on', on); }
 
+  // 録音開始タイミング: 参照トラックがあればその周回頭、なければ通常の小節頭。
+  // (UIで「TRACK X の周回頭で開始します」と案内しているのに、実際は最短の小節頭で
+  //  開始してしまい、長いループへの重ね録りがずれていた)
+  function isRecStartBoundary(t, barBoundary){
+    if (!t.recAlignRefId || !t.recAlignRefLen) return barBoundary;
+    const ref = tracks.find(tr => tr.id === t.recAlignRefId);
+    // 参照トラックが停止/削除されていたら通常の小節頭にフォールバック
+    if (!ref || ref.state !== 'playing') return barBoundary;
+    return mod(pulseCount - t.recAlignRefStart, t.recAlignRefLen) === 0;
+  }
+
   function handleClockPulse(){
     if (syncMode === 'external'){
       const now = performance.now();
@@ -954,8 +1026,8 @@
     const barBoundary = posInBar === 0;
 
     for (const t of tracks){
-      if (t.state === 'rec-armed' && barBoundary){
-        startRecording(t);
+      if (t.state === 'rec-armed'){
+        if (isRecStartBoundary(t, barBoundary)) startRecording(t);
       } else if (t.state === 'recording' && pulseCount >= t.recordTargetPulse){
         stopRecordingAndPlay(t);
       } else if (t.state === 'play-armed' && barBoundary){
@@ -1000,25 +1072,28 @@
   // ---------- recording / playback per track ----------
   function startRecording(t){
     recordedChunks = [];
+    recordingTrackId = t.id;
     t.state = 'recording';
     t.recordTargetPulse = pulseCount + t.bars * PULSES_PER_BAR;
-    updateTransportUI(); renderTrackList();
-    if (t.id === selectedId){ els.stateLine.textContent = `TRACK ${t.id} 録音中 — ${t.bars}小節`; els.lcdTag.textContent = 'REC'; startTimer(); }
+    updateTransportUI(); renderTrackList(); updateStatusLine(t);
+    if (t.id === selectedId) startTimer();
   }
 
   function stopRecordingAndPlay(t){
     if (t.id === selectedId) freezeTimer();
     const chunks = recordedChunks;
     recordedChunks = [];
-    if (chunks.length === 0){
+    recordingTrackId = null;
+    const numChannels = chunks.length ? chunks[0].length : 0;
+    const totalLength = chunks.reduce((sum,c) => sum + c[0].length, 0);
+    // 長さ0でcreateBufferを呼ぶと例外になるため、チャンク数だけでなく実サンプル数も確認する
+    if (!numChannels || !totalLength){
       t.state = 'empty';
       updateTransportUI(); renderTrackList();
       if (t.id === selectedId){ els.stateLine.textContent = '録音データがありませんでした。入力レベルを確認してください。'; els.lcdTag.textContent = 'READY'; }
       return;
     }
-    const numChannels = chunks[0].length;
     const sampleRate = audioCtx.sampleRate;
-    const totalLength = chunks.reduce((sum,c) => sum + c[0].length, 0);
     const buffer = audioCtx.createBuffer(numChannels, totalLength, sampleRate);
     for (let ch=0; ch<numChannels; ch++){
       const data = buffer.getChannelData(ch);
@@ -1046,19 +1121,14 @@
     t.playStartTime = audioCtx.currentTime;
     t.loopStartPulse = pulseCount;
     t.state = 'playing';
-    updateTransportUI(); renderTrackList();
-    if (t.id === selectedId){
-      els.stateLine.textContent = `TRACK ${t.id} ループ再生中`;
-      els.lcdTag.textContent = 'PLAY';
-      els.lcdTime.textContent = formatTime(t.buffer.duration*1000);
-    }
+    updateTransportUI(); renderTrackList(); updateStatusLine(t);
+    if (t.id === selectedId) els.lcdTime.textContent = formatTime(t.buffer.duration*1000);
   }
 
   function stopPlayback(t){
     if (t.source){ try{ t.source.stop(); }catch(e){} t.source = null; }
     t.state = 'stopped';
-    updateTransportUI(); renderTrackList();
-    if (t.id === selectedId){ els.stateLine.textContent = `TRACK ${t.id} 停止中 — PLAYで再生 / CLEARで削除`; els.lcdTag.textContent = 'STOP'; }
+    updateTransportUI(); renderTrackList(); updateStatusLine(t);
   }
 
   // ---------- transport actions (shared by buttons + MIDI/keyboard mapping) ----------
@@ -1066,10 +1136,17 @@
   function triggerRec(targetId){
     if (targetId && targetId !== selectedId) selectTrack(targetId);
     const t = getSelected();
-    if (t.state === 'rec-armed'){ t.state = t.buffer ? 'stopped' : 'empty'; t.recAlignRefId = null; updateTransportUI(); renderTrackList(); els.stateLine.textContent = `TRACK ${t.id} 待機中 — REC で次の小節頭から録音`; els.lcdTag.textContent = 'READY'; return; }
+    if (t.state === 'rec-armed'){
+      t.state = t.buffer ? 'stopped' : 'empty';
+      t.recAlignRefId = null;
+      updateTransportUI(); renderTrackList(); updateStatusLine(t);
+      return;
+    }
     if (!(t.state === 'empty' || t.state === 'stopped')) return;
-    if (!running){ showError('クロックが動作していません。接続設定を確認してください。'); return; }
-    if (t.state === 'stopped') stopPlayback(t);
+    if (!running){ showTransportMessage('クロックが動作していません。接続設定を確認してください。'); return; }
+    // 録音バッファは全トラック共有のため、同時録音は受け付けない
+    const busy = tracks.find(tr => tr.id !== t.id && (tr.state === 'recording' || tr.state === 'rec-armed'));
+    if (busy){ showTransportMessage(`TRACK ${busy.id} が録音中/録音待機中です。先にそちらを終えてください。`); return; }
 
     // 他に再生中のトラックがあれば、その中で最も長いループの周回頭(小節1拍目に戻る瞬間)まで待つ
     const playingTracks = tracks.filter(tr => tr.state === 'playing' && tr.id !== t.id);
@@ -1083,11 +1160,7 @@
     }
 
     t.state = 'rec-armed';
-    updateTransportUI(); renderTrackList();
-    els.stateLine.textContent = t.recAlignRefId
-      ? `TRACK ${t.id} 録音待機中 — TRACK ${t.recAlignRefId} の周回頭で開始します`
-      : `TRACK ${t.id} 録音待機中 — 次の小節頭で開始します`;
-    els.lcdTag.textContent = 'ARMED';
+    updateTransportUI(); renderTrackList(); updateStatusLine(t);
   }
 
   function triggerPlay(targetId){
@@ -1097,8 +1170,7 @@
     if (t.state !== 'stopped') return;
     if (running){
       t.state = 'play-armed';
-      updateTransportUI(); renderTrackList();
-      els.stateLine.textContent = `TRACK ${t.id} 再生待機中 — 次の小節頭で開始します`;
+      updateTransportUI(); renderTrackList(); updateStatusLine(t);
     } else {
       startPlayback(t);
     }
@@ -1109,40 +1181,40 @@
     const t = getSelected();
     if (t.state === 'stop-armed'){
       t.state = 'playing';
-      updateTransportUI(); renderTrackList();
-      if (t.id === selectedId){ els.stateLine.textContent = `TRACK ${t.id} ループ再生中`; els.lcdTag.textContent = 'PLAY'; }
+      updateTransportUI(); renderTrackList(); updateStatusLine(t);
       return;
     }
     if (t.state !== 'playing') return;
     if (!running){ stopPlayback(t); return; }
     t.state = 'stop-armed';
-    updateTransportUI(); renderTrackList();
-    if (t.id === selectedId){ els.stateLine.textContent = `TRACK ${t.id} 停止待機中 — 次の小節頭で停止します`; els.lcdTag.textContent = 'STOP\u2248'; }
+    updateTransportUI(); renderTrackList(); updateStatusLine(t);
   }
 
   function triggerClear(targetId){
     if (targetId && targetId !== selectedId) selectTrack(targetId);
     const t = getSelected();
     if (t.source){ try{ t.source.stop(); }catch(e){} t.source = null; }
+    // 録音中のトラックを消したら取り込みも止める(放置すると無音チャンクが溜まり続ける)
+    if (recordingTrackId === t.id){ recordingTrackId = null; recordedChunks = []; }
     t.buffer = null; t.originalBuffer = null; t.reversed = false; t.fx.reverse = false;
+    t.recAlignRefId = null;
     t.state = 'empty';
     if (t.id === selectedId) resetTimerDisplay();
-    updateTransportUI(); renderTrackList(); renderTimeline(); renderEffectsGrid();
-    els.stateLine.textContent = `TRACK ${t.id} 待機中 — REC で次の小節頭から録音`;
-    els.lcdTag.textContent = 'READY';
+    updateTransportUI(); renderTrackList(); renderTimeline(); renderEffectsGrid(); updateStatusLine(t);
   }
 
   // 全トラックを即座に停止(クオンタイズなし・緊急停止)
   function panicStopAll(){
     tracks.forEach(tr => {
       if (tr.source){ try{ tr.source.stop(); }catch(e){} tr.source = null; }
-      if (tr.state === 'recording' || tr.state === 'rec-armed' || tr.state === 'playing' || tr.state === 'play-armed' || tr.state === 'stop-armed'){
+      if (tr.state === 'recording' || tr.state === 'playing' || ARMED_STATES.includes(tr.state)){
         tr.state = tr.buffer ? 'stopped' : 'empty';
       }
       tr.recAlignRefId = null;
       FX_NAMES.forEach(name => { tr.fxPending[name] = null; });
     });
     recordedChunks = [];
+    recordingTrackId = null;
     freezeTimer();
     updateTransportUI(); renderTrackList(); renderEffectsGrid(); renderTimeline();
     els.stateLine.textContent = '全トラック停止(PANIC)';
@@ -1158,18 +1230,7 @@
     const t = getSelected();
     els.timelineTrackLabel.textContent = `TRACK ${t.id}`;
     els.fxTrackLabel.textContent = `TRACK ${t.id}`;
-    if (t.state === 'playing'){ els.stateLine.textContent = `TRACK ${t.id} ループ再生中`; els.lcdTag.textContent = 'PLAY'; }
-    else if (t.state === 'stopped'){ els.stateLine.textContent = `TRACK ${t.id} 停止中 — PLAYで再生 / CLEARで削除`; els.lcdTag.textContent = 'STOP'; }
-    else if (t.state === 'recording'){ els.stateLine.textContent = `TRACK ${t.id} 録音中 — ${t.bars}小節`; els.lcdTag.textContent = 'REC'; }
-    else if (t.state === 'rec-armed'){
-      els.stateLine.textContent = t.recAlignRefId
-        ? `TRACK ${t.id} 録音待機中 — TRACK ${t.recAlignRefId} の周回頭で開始します`
-        : `TRACK ${t.id} 録音待機中 — 次の小節頭で開始します`;
-      els.lcdTag.textContent = 'ARMED';
-    }
-    else if (t.state === 'play-armed'){ els.stateLine.textContent = `TRACK ${t.id} 再生待機中 — 次の小節頭で開始します`; els.lcdTag.textContent = 'ARMED'; }
-    else if (t.state === 'stop-armed'){ els.stateLine.textContent = `TRACK ${t.id} 停止待機中 — 次の小節頭で停止します`; els.lcdTag.textContent = 'STOP\u2248'; }
-    else { els.stateLine.textContent = `TRACK ${t.id} 待機中 — REC で次の小節頭から録音`; els.lcdTag.textContent = 'READY'; }
+    updateStatusLine(t);
   }
 
   // ---------- learn-mode wrapper ----------
@@ -1193,7 +1254,18 @@
   els.btnPlay.addEventListener('click', () => onControlActivate('transport:play', triggerPlay));
   els.btnStop.addEventListener('click', () => onControlActivate('transport:stop', triggerStop));
   els.btnClear.addEventListener('click', () => onControlActivate('transport:clear', triggerClear));
-  els.btnResetBar.addEventListener('click', () => { pulseCount = 0; updateDialProgress(); });
+  els.btnResetBar.addEventListener('click', () => {
+    // pulseCountだけ0に戻すと、進行中の録音の終了位置や再生ループの基準が取り残されて
+    // 録音が延々と続いてしまうため、各トラックの基準パルスも同じ量だけずらす
+    const delta = pulseCount;
+    pulseCount = 0;
+    tracks.forEach(t => {
+      t.recordTargetPulse -= delta;
+      t.loopStartPulse -= delta;
+      t.recAlignRefStart -= delta;
+    });
+    updateDialProgress();
+  });
 
   function updateTransportUI(){
     const t = getSelected();
@@ -1213,8 +1285,13 @@
   }
 
   // ---------- track list UI ----------
+  // ミニ波形はバッファ全体を走査するので、バッファ単位で結果をキャッシュする
+  // (リバース時は別バッファになるため自動的に再計算される)
+  const miniBarsCache = new WeakMap();
   function trackMiniBars(t){
     if (!t.buffer){ return Array.from({length:8}, () => `<span></span>`).join(''); }
+    const cached = miniBarsCache.get(t.buffer);
+    if (cached !== undefined) return cached;
     const data = t.buffer.getChannelData(0);
     const step = Math.floor(data.length/8) || 1;
     let out = '';
@@ -1225,12 +1302,13 @@
       const h = Math.max(15, Math.min(100, peak*140));
       out += `<span class="filled" style="height:${h}%"></span>`;
     }
+    miniBarsCache.set(t.buffer, out);
     return out;
   }
 
   function renderTrackList(){
     els.trackList.innerHTML = tracks.map(t => {
-      const dotClass = t.state === 'recording' ? 'rec' : t.state === 'playing' ? 'play' : (t.state==='rec-armed'||t.state==='play-armed'||t.state==='stop-armed') ? 'armed' : '';
+      const dotClass = t.state === 'recording' ? 'rec' : t.state === 'playing' ? 'play' : ARMED_STATES.includes(t.state) ? 'armed' : '';
       const dur = t.buffer ? formatTime(t.buffer.duration*1000) : '--:--';
       const label = t.buffer ? `LOOP ${t.id}${t.reversed ? ' (REV)' : ''}` : 'EMPTY';
       return `
@@ -1468,10 +1546,10 @@
     }
     els.mappingsList.innerHTML = entries.map(([key,action]) => `
       <div class="mapping-row">
-        <span class="mapping-trigger">${triggerLabel(key)}</span>
+        <span class="mapping-trigger">${escapeHtml(triggerLabel(key))}</span>
         <span class="mapping-arrow">→</span>
-        <span class="mapping-action">${actionLabel(action)}</span>
-        <button class="mapping-remove" data-key="${key}">×</button>
+        <span class="mapping-action">${escapeHtml(actionLabel(action))}</span>
+        <button class="mapping-remove" data-key="${escapeHtml(key)}">×</button>
       </div>`).join('');
     [...els.mappingsList.querySelectorAll('.mapping-remove')].forEach(btn => {
       btn.addEventListener('click', () => {
@@ -1509,10 +1587,10 @@
     });
     els.keyMappingsList.innerHTML = entries.map(([key,action]) => `
       <div class="mapping-row">
-        <span class="mapping-trigger">${keyLabel(key)}</span>
+        <span class="mapping-trigger">${escapeHtml(keyLabel(key))}</span>
         <span class="mapping-arrow">→</span>
-        <span class="mapping-action">${actionLabel(action)}</span>
-        <button class="mapping-remove" data-key="${key}">×</button>
+        <span class="mapping-action">${escapeHtml(actionLabel(action))}</span>
+        <button class="mapping-remove" data-key="${escapeHtml(key)}">×</button>
       </div>`).join('');
     [...els.keyMappingsList.querySelectorAll('.mapping-remove')].forEach(btn => {
       btn.addEventListener('click', () => {
@@ -1600,7 +1678,7 @@
 
   // ---------- 誤操作防止: 未保存の録音がある状態でのタブ離脱を警告 ----------
   function hasActiveSessionContent(){
-    return tracks.some(t => t.buffer || ['recording','rec-armed','play-armed','stop-armed'].includes(t.state));
+    return tracks.some(t => t.buffer || t.state === 'recording' || ARMED_STATES.includes(t.state));
   }
   window.addEventListener('beforeunload', (e) => {
     if (!hasActiveSessionContent()) return;
@@ -1631,6 +1709,8 @@
   let wakeLock = null;
   async function requestWakeLock(){
     if (!('wakeLock' in navigator)) return;
+    // 有効なロックが既にあるなら二重取得しない(古いsentinelが解放されないまま残るため)
+    if (wakeLock && !wakeLock.released) return;
     try{
       wakeLock = await navigator.wakeLock.request('screen');
       console.log('[SYNC LOOPER] Wake Lock acquired');

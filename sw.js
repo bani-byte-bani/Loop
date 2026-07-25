@@ -1,4 +1,4 @@
-const CACHE_NAME = 'loop-console-v6';
+const CACHE_NAME = 'loop-console-v7';
 const PRECACHE_URLS = [
   './index.html',
   './manifest.json',
