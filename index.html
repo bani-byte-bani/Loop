@@ -131,6 +131,17 @@
 
   .card{ background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px; }
   .card h2{ margin:0 0 12px; font-family:'JetBrains Mono', monospace; font-size:10px; letter-spacing:0.16em; color:var(--ink-dim); text-transform:uppercase; }
+  .card.collapsible{ padding:16px; }
+  .card.collapsible summary{
+    margin:0; font-family:'JetBrains Mono', monospace; font-size:10px; letter-spacing:0.16em;
+    color:var(--ink-dim); text-transform:uppercase; cursor:pointer; list-style:none;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .card.collapsible summary::-webkit-details-marker{ display:none; }
+  .card.collapsible summary::after{ content:'▸'; font-size:10px; transition:transform .15s ease; }
+  .card.collapsible[open] summary::after{ transform:rotate(90deg); }
+  .card.collapsible[open] summary{ margin-bottom:12px; }
+  .card.collapsible[open] > *:not(summary){ margin-top:0; }
 
   .lcd{ background:var(--screen-bg); border-radius:6px; padding:9px 13px; display:flex; align-items:baseline; justify-content:space-between; box-shadow:inset 0 2px 6px rgba(0,0,0,0.6); margin-bottom:16px; }
   .lcd-time{ font-family:'JetBrains Mono', monospace; font-size:18px; color:var(--screen-fg); letter-spacing:0.05em; text-shadow:0 0 8px rgba(111,199,255,0.5); font-variant-numeric:tabular-nums; }
@@ -383,22 +394,22 @@
     </div>
 
     <div style="height:16px;"></div>
-    <div class="card">
-      <h2>Keyboard Mappings</h2>
+    <details class="card collapsible" id="keyMappingsCard">
+      <summary>Keyboard Mappings</summary>
       <div id="keyMappingsList"></div>
       <div style="height:10px;"></div>
       <button class="btn-slab" id="btnResetKeyMappings">デフォルト配列に戻す</button>
-    </div>
+    </details>
   </div>
 
-  <div class="footer" id="footerLine">LOOP CONSOLE — PERSONAL BUILD</div>
+  <div class="footer" id="footerLine">LOOP CONSOLE</div>
 </div>
 
 <audio id="outputEl" autoplay></audio>
 
 <script>
 (() => {
-  const APP_VERSION = 'v1';
+  const APP_VERSION = 'v2';
   console.log('[SYNC LOOPER] Script init start. Version:', APP_VERSION);
   window.addEventListener('error', (e) => {
     console.error('[SYNC LOOPER] window error event:', e.message, e.error);
@@ -459,6 +470,7 @@
     btnClearMappings: document.getElementById('btnClearMappings'),
     keyMappingsList: document.getElementById('keyMappingsList'),
     btnResetKeyMappings: document.getElementById('btnResetKeyMappings'),
+    keyMappingsCard: document.getElementById('keyMappingsCard'),
   };
 
   console.log('[SYNC LOOPER] DOM elements resolved:', els);
@@ -467,7 +479,7 @@
     console.error('[SYNC LOOPER] Missing DOM elements:', missingEls);
     alert('[SYNC LOOPER] 初期化エラー: 以下のIDの要素が見つかりません -> ' + missingEls.join(', '));
   }
-  els.footerLine.textContent = `LOOP CONSOLE — PERSONAL BUILD — ${APP_VERSION}`;
+  els.footerLine.textContent = `LOOP CONSOLE — ${APP_VERSION}`;
 
   const PPQ = 24;
   const PULSES_PER_BAR = PPQ * 4;
@@ -1502,6 +1514,10 @@
   els.btnResetKeyMappings.addEventListener('click', () => {
     keyMappings = { ...DEFAULT_KEY_MAPPINGS };
     saveKeyMappings(); renderKeyMappingsList();
+  });
+
+  els.keyMappingsCard.addEventListener('toggle', () => {
+    console.log('[SYNC LOOPER] Keyboard Mappings panel', els.keyMappingsCard.open ? 'expanded' : 'collapsed');
   });
 
   // ---------- timeline waveform ----------
