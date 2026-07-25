@@ -391,14 +391,15 @@
     </div>
   </div>
 
-  <div class="footer">LOOP CONSOLE — PERSONAL BUILD</div>
+  <div class="footer" id="footerLine">LOOP CONSOLE — PERSONAL BUILD</div>
 </div>
 
 <audio id="outputEl" autoplay></audio>
 
 <script>
 (() => {
-  console.log('[SYNC LOOPER] Script init start');
+  const APP_VERSION = 'v1';
+  console.log('[SYNC LOOPER] Script init start. Version:', APP_VERSION);
   window.addEventListener('error', (e) => {
     console.error('[SYNC LOOPER] window error event:', e.message, e.error);
   });
@@ -442,6 +443,7 @@
     btnResetBar: document.getElementById('btnResetBar'),
     btnPanic: document.getElementById('btnPanic'),
     btnFullscreen: document.getElementById('btnFullscreen'),
+    footerLine: document.getElementById('footerLine'),
     outputEl: document.getElementById('outputEl'),
     trackList: document.getElementById('trackList'),
     effectsGrid: document.getElementById('effectsGrid'),
@@ -465,6 +467,7 @@
     console.error('[SYNC LOOPER] Missing DOM elements:', missingEls);
     alert('[SYNC LOOPER] 初期化エラー: 以下のIDの要素が見つかりません -> ' + missingEls.join(', '));
   }
+  els.footerLine.textContent = `LOOP CONSOLE — PERSONAL BUILD — ${APP_VERSION}`;
 
   const PPQ = 24;
   const PULSES_PER_BAR = PPQ * 4;
