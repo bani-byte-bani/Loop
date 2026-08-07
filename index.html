@@ -209,24 +209,58 @@
   .state-line{ text-align:center; font-family:'JetBrains Mono', monospace; font-size:11px; color:var(--ink-dim); margin-bottom:var(--gap); min-height:14px; }
 
   .transport{ display:grid; grid-template-columns:repeat(4,1fr); gap:9px; }
-  .deck-btn{ position:relative; aspect-ratio:1; border-radius:var(--radius); border:1px solid var(--shell-edge); background:linear-gradient(180deg,var(--body-a),var(--body-b)); box-shadow:0 2px 0 rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.7); cursor:pointer; display:flex; align-items:center; justify-content:center; }
-  .deck-btn:active{ transform:translateY(1px); }
-  .deck-btn:disabled{ opacity:0.35; cursor:not-allowed; }
-  .deck-glyph{ width:19px; height:19px; }
+  .deck-btn{
+    position:relative; aspect-ratio:1; border-radius:var(--radius);
+    border:1px solid var(--shell-edge);
+    background:linear-gradient(180deg,var(--body-a),var(--body-b));
+    box-shadow:0 2px 0 rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.45);
+    cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;
+    transition:background .12s, color .12s;
+  }
+  .deck-btn:active{ transform:translateY(1px); box-shadow:0 1px 0 rgba(0,0,0,0.18), inset 0 1px 3px rgba(0,0,0,0.3); }
+  .deck-btn:disabled{ opacity:0.3; cursor:not-allowed; }
+  .deck-glyph{ width:16px; height:16px; }
   .deck-glyph svg{ width:100%; height:100%; }
-  .deck-label{ position:absolute; bottom:5px; font-family:'JetBrains Mono', monospace; font-size:7px; letter-spacing:0.1em; color:var(--ink-dim); }
-  #btnRec .deck-glyph circle{ fill:var(--red); }
-  #btnRec.armed{ animation:blinkbg 0.6s step-start infinite; }
-  #btnRec.recording{ background:linear-gradient(180deg,#f3d9d5,#e8c2bc); }
-  @keyframes blinkbg{ 50%{ background:linear-gradient(180deg,#f3d9d5,#e8c2bc); } }
-  #btnPlay .deck-glyph polygon{ fill:var(--ink); }
-  #btnPlay.armed{ animation:blinkbg2 0.6s step-start infinite; }
-  #btnPlay.playing{ background:linear-gradient(180deg,#d9ecdf,#c3ddc9); }
-  #btnPlay.playing .deck-glyph polygon{ fill:var(--green); }
-  @keyframes blinkbg2{ 50%{ background:linear-gradient(180deg,#d9ecdf,#c3ddc9); } }
-  #btnStop .deck-glyph rect{ fill:var(--ink); }
-  #btnStop.armed{ animation:blinkbg3 0.6s step-start infinite; }
-  @keyframes blinkbg3{ 50%{ background:linear-gradient(180deg,#f7ecd8,#f0dcb0); } }
+  /* ラベルはボタン中央の主役。刻印風に少し沈ませる */
+  .deck-label{
+    font-family:'JetBrains Mono', monospace; font-weight:700;
+    font-size:13px; letter-spacing:0.16em; color:var(--ink);
+    text-shadow:0 1px 0 rgba(255,255,255,0.35);
+  }
+
+  /* REC: 赤い押しボタン */
+  #btnRec{ background:linear-gradient(180deg,#b8483a,#8e3125); border-color:#7a2a20; }
+  #btnRec .deck-label{ color:#f2e4e1; text-shadow:0 1px 1px rgba(0,0,0,0.45); }
+  #btnRec .deck-glyph circle{ fill:#f2e4e1; }
+  #btnRec.armed{ animation:blinkrec 0.6s step-start infinite; }
+  @keyframes blinkrec{ 50%{ background:linear-gradient(180deg,#d9604f,#a63c2d); } }
+  #btnRec.recording{ background:linear-gradient(180deg,#d9604f,#a63c2d); box-shadow:0 0 12px rgba(184,72,58,0.55), inset 0 1px 0 rgba(255,255,255,0.25); }
+
+  /* PLAY: 少し見慣れない青緑寄りの緑 */
+  #btnPlay{ background:linear-gradient(180deg,#4f8271,#33604f); border-color:#2b5243; }
+  #btnPlay .deck-label{ color:#e2efe8; text-shadow:0 1px 1px rgba(0,0,0,0.4); }
+  #btnPlay .deck-glyph polygon{ fill:#e2efe8; }
+  #btnPlay.armed{ animation:blinkplay 0.6s step-start infinite; }
+  @keyframes blinkplay{ 50%{ background:linear-gradient(180deg,#68a189,#3f7561); } }
+  #btnPlay.playing{ background:linear-gradient(180deg,#68a189,#3f7561); box-shadow:0 0 12px rgba(79,130,113,0.5), inset 0 1px 0 rgba(255,255,255,0.25); }
+
+  /* STOP: 無彩色の重い押しボタン */
+  #btnStop{ background:linear-gradient(180deg,#6f736f,#4d514e); border-color:#42463f; }
+  #btnStop .deck-label{ color:#e6e8e4; text-shadow:0 1px 1px rgba(0,0,0,0.4); }
+  #btnStop .deck-glyph rect{ fill:#e6e8e4; }
+  #btnStop.armed{ animation:blinkstop 0.6s step-start infinite; }
+  @keyframes blinkstop{ 50%{ background:linear-gradient(180deg,#8b8f8a,#5f635f); } }
+
+  /* CLEAR: くしゃくしゃの紙。SVGのタービュレンス+拡散光で皺の凹凸を作る
+     (外部画像を使わず、これ1枚で不規則な折り目になる) */
+  #btnClear{
+    border-color:var(--shell-edge);
+    background-color:#c4c7c2;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='cr'><feTurbulence type='fractalNoise' baseFrequency='0.045' numOctaves='5' seed='11' result='n'/><feDiffuseLighting in='n' lighting-color='%23d8dbd6' surfaceScale='2.4'><feDistantLight azimuth='118' elevation='52'/></feDiffuseLighting></filter><rect width='160' height='160' filter='url(%23cr)'/></svg>");
+    background-size:cover;
+    background-blend-mode:multiply;
+  }
+  #btnClear .deck-label{ color:var(--ink); }
   #btnClear .deck-glyph line{ stroke:var(--ink); }
 
   /* チューナー */
@@ -243,10 +277,39 @@
 
   .reset-row{ text-align:center; margin-top:var(--gap); display:flex; flex-direction:column; align-items:center; gap:8px; }
   .reset-row button{ background:none; border:none; cursor:pointer; font-family:'JetBrains Mono', monospace; font-size:10px; color:var(--ink-dim); text-decoration:underline; }
+  /* 東欧の工業機器風トグルスイッチ。0(切) / I(入) の刻印つき */
+  .sw{ position:relative; display:inline-block; width:42px; height:20px; flex:none; vertical-align:middle; }
+  .sw input{ position:absolute; inset:0; width:100%; height:100%; margin:0; opacity:0; cursor:pointer; z-index:2; }
+  .sw-track{
+    position:absolute; inset:0; border:1px solid var(--shell-edge); border-radius:2px;
+    background:linear-gradient(180deg,#9fa39e,#b7bab5);
+    box-shadow:inset 0 2px 4px rgba(0,0,0,0.38);
+    transition:background .12s;
+  }
+  /* 筐体側の刻印。ノブに隠れないよう両脇に置く */
+  .sw-group{ display:inline-flex; align-items:center; gap:5px; }
+  .sw-mark{ font-family:'JetBrains Mono', monospace; font-size:10px; font-weight:700; color:var(--ink-faint); line-height:1; }
+  .sw-group:has(input:checked) .sw-mark-on{ color:var(--amber); }
+  .sw-group:has(input:not(:checked)) .sw-mark-off{ color:var(--ink-dim); }
+  .sw-knob{
+    position:absolute; top:2px; left:2px; width:18px; height:14px; z-index:1;
+    border:1px solid #6f736e; border-radius:1px;
+    background:linear-gradient(180deg,#eceee9 0%,#c6cac4 55%,#a9ada7 100%);
+    box-shadow:0 1px 2px rgba(0,0,0,0.45);
+    transition:left .12s ease, background .12s;
+  }
+  /* 指かかりの溝 */
+  .sw-knob::after{
+    content:''; position:absolute; top:3px; bottom:3px; left:6px; width:5px;
+    border-left:1px solid rgba(0,0,0,0.28); border-right:1px solid rgba(0,0,0,0.28);
+  }
+  .sw input:checked ~ .sw-knob{ left:20px; background:linear-gradient(180deg,#f0e2bd 0%,#d3b168 55%,#b5892f 100%); border-color:#8a6721; }
+  .sw input:checked ~ .sw-track{ background:linear-gradient(180deg,#7d7a5f,#95927a); }
+  .sw input:focus-visible ~ .sw-track{ outline:1px solid var(--amber); outline-offset:1px; }
+
   .cal-row{ display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:6px 14px; }
   .latency-cal{ font-family:'JetBrains Mono', monospace; font-size:9px; letter-spacing:0.06em; color:var(--ink-dim); display:inline-flex; align-items:center; gap:5px; cursor:pointer; }
   .latency-cal input[type="number"]{ width:54px; padding:3px 5px; text-align:center; font-family:'JetBrains Mono', monospace; font-size:10px; border:1px solid var(--line); border-radius:var(--radius); background:var(--sunk); color:var(--ink); }
-  .latency-cal input[type="checkbox"]{ width:13px; height:13px; accent-color:var(--amber); cursor:pointer; margin:0; }
 
   /* track select */
   .track-row{ display:flex; align-items:center; gap:12px; padding:12px 4px; border-bottom:1px solid var(--line); cursor:pointer; }
@@ -419,7 +482,8 @@
         </div>
         <div class="tuner" id="tunerPanel">
           <label class="latency-cal" title="入力の音程を表示します(使用中はごくわずかにCPUを使います)">
-            <input type="checkbox" id="tunerToggle"> チューナー
+            <span class="sw-group"><span class="sw-mark sw-mark-off">0</span><span class="sw"><input type="checkbox" id="tunerToggle"><span class="sw-track"></span><span class="sw-knob"></span></span><span class="sw-mark sw-mark-on">I</span></span>
+            チューナー
           </label>
           <div class="tuner-readout hidden" id="tunerReadout">
             <div class="tuner-meter"><div class="tuner-needle" id="tunerNeedle"></div></div>
@@ -441,7 +505,8 @@
               再生補正 <input type="number" id="playbackInput" min="0" max="300" step="5" value="0"> ms
             </label>
             <label class="latency-cal" title="録音後、しきい値を超えた最初の音が小節頭に来るよう自動でずらします">
-              <input type="checkbox" id="autoAdjustToggle"> オートアジャスト
+              <span class="sw-group"><span class="sw-mark sw-mark-off">0</span><span class="sw"><input type="checkbox" id="autoAdjustToggle"><span class="sw-track"></span><span class="sw-knob"></span></span><span class="sw-mark sw-mark-on">I</span></span>
+              オートアジャスト
             </label>
             <label class="latency-cal" title="ループ内のピーク音量に対する割合。小さいほど弱い音にも反応します">
               しきい値 <input type="number" id="autoAdjustThreshold" min="5" max="90" step="5" value="20"> %
@@ -516,10 +581,10 @@
 
 <script>
 (() => {
-  const APP_VERSION = 'v14';
+  const APP_VERSION = 'v15';
   // デプロイのたびに APP_VERSION / sw.js の CACHE_NAME と一緒に更新する。
   // UTCで持ち、表示時に閲覧者のローカル時刻へ変換する(時差の誤解を避けるため)
-  const APP_BUILT_AT = '2026-08-07T21:35:00Z';
+  const APP_BUILT_AT = '2026-08-07T21:48:00Z';
   console.log('[SYNC LOOPER] Script init start. Version:', APP_VERSION);
   window.addEventListener('error', (e) => {
     console.error('[SYNC LOOPER] window error event:', e.message, e.error);
