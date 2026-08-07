@@ -256,7 +256,23 @@
   .mapping-remove{ background:none; border:none; color:var(--red); cursor:pointer; font-size:14px; line-height:1; padding:2px 6px; }
   .mapping-empty{ font-family:'JetBrains Mono', monospace; font-size:11px; color:var(--ink-faint); line-height:1.6; }
 
-  .footer{ margin-top:16px; text-align:center; font-family:'JetBrains Mono', monospace; font-size:9px; letter-spacing:0.14em; color:var(--ink-faint); }
+  /* 画面下に常時表示するバージョン表示(スクロール位置に関係なく見える) */
+  .footer{
+    position:fixed;
+    left:0; right:0; bottom:0;
+    z-index:20;
+    text-align:center;
+    font-family:'JetBrains Mono', monospace;
+    font-size:9px;
+    letter-spacing:0.14em;
+    color:var(--ink-dim);
+    background:rgba(242,238,226,0.88);
+    border-top:1px solid var(--line);
+    padding:6px 10px calc(6px + env(safe-area-inset-bottom, 0px));
+    backdrop-filter:blur(6px);
+    -webkit-backdrop-filter:blur(6px);
+    pointer-events:none;  /* 下に隠れたUIの操作を邪魔しない */
+  }
 </style>
 </head>
 <body>
@@ -411,14 +427,18 @@
     </details>
   </div>
 
-  <div class="footer" id="footerLine">LOOP CONSOLE</div>
 </div>
+
+<div class="footer" id="footerLine">LOOP CONSOLE</div>
 
 <audio id="outputEl" autoplay></audio>
 
 <script>
 (() => {
-  const APP_VERSION = 'v8';
+  const APP_VERSION = 'v9';
+  // デプロイのたびに APP_VERSION / sw.js の CACHE_NAME と一緒に更新する。
+  // UTCで持ち、表示時に閲覧者のローカル時刻へ変換する(時差の誤解を避けるため)
+  const APP_BUILT_AT = '2026-08-07T16:42:00Z';
   console.log('[SYNC LOOPER] Script init start. Version:', APP_VERSION);
   window.addEventListener('error', (e) => {
     console.error('[SYNC LOOPER] window error event:', e.message, e.error);
@@ -489,7 +509,13 @@
     console.error('[SYNC LOOPER] Missing DOM elements:', missingEls);
     alert('[SYNC LOOPER] 初期化エラー: 以下のIDの要素が見つかりません -> ' + missingEls.join(', '));
   }
-  els.footerLine.textContent = `LOOP CONSOLE — ${APP_VERSION}`;
+  function formatBuiltAt(iso){
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    const p = (n) => String(n).padStart(2,'0');
+    return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+  els.footerLine.textContent = `LOOP CONSOLE — ${APP_VERSION} — 更新 ${formatBuiltAt(APP_BUILT_AT)}`;
 
   const PPQ = 24;
   const PULSES_PER_BAR = PPQ * 4;
