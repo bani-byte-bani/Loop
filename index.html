@@ -435,10 +435,10 @@
 
 <script>
 (() => {
-  const APP_VERSION = 'v9';
+  const APP_VERSION = 'v10';
   // デプロイのたびに APP_VERSION / sw.js の CACHE_NAME と一緒に更新する。
   // UTCで持ち、表示時に閲覧者のローカル時刻へ変換する(時差の誤解を避けるため)
-  const APP_BUILT_AT = '2026-08-07T16:42:00Z';
+  const APP_BUILT_AT = '2026-08-07T17:04:00Z';
   console.log('[SYNC LOOPER] Script init start. Version:', APP_VERSION);
   window.addEventListener('error', (e) => {
     console.error('[SYNC LOOPER] window error event:', e.message, e.error);
@@ -643,7 +643,7 @@
   const tracks = ['A','B','C','D'].map(id => ({
     id, bars:4, buffer:null, originalBuffer:null, reversed:false,
     source:null, state:'empty', recordTargetPulse:0, playStartTime:0,
-    recStartFrame:0, recTargetSamples:0,
+    recStartFrame:0, recTargetSamples:0, recLatencySamples:0,
     loopStartPulse:0, recAlignRefId:null, recAlignRefLen:0, recAlignRefStart:0,
     fx:{ reverb:false, delay:false, filter:false, reverse:false, tape:false },
     fxPending:{ reverb:null, delay:null, filter:null, reverse:null, tape:null },
@@ -663,13 +663,22 @@
   let captureChunks = [];        // { frame, chans:[Float32Array,...] }
   let captureChannels = 0;
   let activeRecStartFrame = 0;
-  const PRE_ROLL_SEC = 1.0;      // レイテンシ補正で過去に遡れる余裕
+  const PRE_ROLL_SEC = 0.5;
+  // 切り出し窓を少し過去にずらしておく余裕。ワークレットからのメッセージ到着が
+  // わずかに遅れても末尾を取りこぼさないようにし、後段の回転で相殺する。
+  const CAPTURE_GUARD_SAMPLES = 2048;
 
-  // 入力レイテンシ補正(ms)。機材ごとに異なるので調整可能にして保存する
+  // 録音レイテンシ補正(ms)。値を大きくするほどループが「前へ」ずれる。
+  // マイク入力は遅れて届くコピーなので、キャプチャ列のフレームXには実時間
+  // (X − 入力レイテンシ)の音が入っている。そのぶん先へ進めて切り出す必要がある。
   let latencyOffsetMs = 0;
 
+  // v9以前は補正の符号が逆(値を上げるほど遅れが増える)だったため、
+  // 保存済みの旧値をそのまま引き継がないよう保存キーを変えている
+  const LATENCY_STORAGE_KEY = 'syncLooperLatencyMs2';
+
   function loadLatencyOffset(){
-    const raw = localStorage.getItem('syncLooperLatencyMs');
+    const raw = localStorage.getItem(LATENCY_STORAGE_KEY);
     if (raw !== null){
       const v = parseFloat(raw);
       if (isFinite(v)) latencyOffsetMs = v;
@@ -677,23 +686,24 @@
     els.latencyInput.value = latencyOffsetMs;
   }
   function setLatencyOffset(ms){
-    // 負値(=未来へずらす)は末尾が未キャプチャになり無音が入るため受け付けない。
+    // 負値(=後ろへずらす)は末尾が未キャプチャになるため受け付けない。
     // 入力レイテンシは必ず「録音が遅れる」方向なので0以上で足りる。
     latencyOffsetMs = Math.min(500, Math.max(0, isFinite(ms) ? ms : 0));
     els.latencyInput.value = latencyOffsetMs;
-    try{ localStorage.setItem('syncLooperLatencyMs', String(latencyOffsetMs)); }
+    try{ localStorage.setItem(LATENCY_STORAGE_KEY, String(latencyOffsetMs)); }
     catch(e){ console.error('[SYNC LOOPER] Failed to save latency offset', e); }
     console.log('[SYNC LOOPER] Latency offset set to', latencyOffsetMs, 'ms');
   }
-  // 保存値が無ければ実機の入力/出力レイテンシから初期値を推定する
+  // 保存値が無ければ実機の入出力レイテンシから初期値を推定する。
+  // 録り音の遅れは「入力レイテンシ + 出力レイテンシ」で効いてくる。
   function estimateLatencyOffset(){
-    if (localStorage.getItem('syncLooperLatencyMs') !== null) return;
-    let seconds = audioCtx.baseLatency || 0;
+    if (localStorage.getItem(LATENCY_STORAGE_KEY) !== null) return;
+    let seconds = audioCtx.outputLatency || audioCtx.baseLatency || 0;
     const track = micStream && micStream.getAudioTracks()[0];
     const settings = track && track.getSettings ? track.getSettings() : null;
     if (settings && isFinite(settings.latency)) seconds += settings.latency;
     const ms = Math.round(seconds * 1000 / 5) * 5;
-    console.log('[SYNC LOOPER] Estimated input latency:', ms, 'ms (baseLatency + track latency)');
+    console.log('[SYNC LOOPER] Estimated round-trip latency:', ms, 'ms (output + input)');
     setLatencyOffset(ms);
   }
   els.latencyInput.addEventListener('change', () => setLatencyOffset(parseFloat(els.latencyInput.value)));
@@ -732,6 +742,22 @@
       filled += count;
     }
     return filled > 0 ? out : null;
+  }
+
+  // バッファを左へ回転して位相を合わせる。
+  // 「切り出し窓を後ろへずらす」のと同じ結果になるが、まだ録れていない未来を
+  // 待たずに済む(ループは周期的なので、はみ出した先頭は末尾へ回して問題ない)。
+  function rotateBufferLeft(buffer, rotateSamples){
+    const n = buffer.length;
+    const r = mod(Math.round(rotateSamples), n);
+    if (r === 0) return buffer;
+    const out = audioCtx.createBuffer(buffer.numberOfChannels, n, buffer.sampleRate);
+    for (let ch=0; ch<buffer.numberOfChannels; ch++){
+      const src = buffer.getChannelData(ch), dst = out.getChannelData(ch);
+      dst.set(src.subarray(r), 0);
+      dst.set(src.subarray(0, r), n - r);
+    }
+    return out;
   }
 
   // トラック状態 → 表示文言を一元管理(各所に散らばっていた同じ文言の重複を排除)
@@ -1195,8 +1221,10 @@
   function startRecording(t){
     recordingTrackId = t.id;
     const sr = audioCtx.sampleRate;
-    // 小節頭を認識した時点の再生クロック位置。入力レイテンシぶん手前から切り出す
-    t.recStartFrame = Math.round(audioCtx.currentTime * sr) - Math.round(latencyOffsetMs / 1000 * sr);
+    // 小節頭を認識した時点の再生クロック位置。取りこぼし防止のガードぶんだけ
+    // 手前から切り出し、レイテンシ補正と合わせて後段の回転で位相を合わせる
+    t.recStartFrame = Math.round(audioCtx.currentTime * sr) - CAPTURE_GUARD_SAMPLES;
+    t.recLatencySamples = Math.round(latencyOffsetMs / 1000 * sr);
     // ループ長はチャンク数ではなくテンポから決める(これをしないと周回ごとにずれる)
     t.recTargetSamples = Math.round(t.bars * PULSES_PER_BAR * secondsPerPulse() * sr);
     activeRecStartFrame = t.recStartFrame;
@@ -1208,8 +1236,12 @@
 
   function stopRecordingAndPlay(t){
     if (t.id === selectedId) freezeTimer();
-    const buffer = sliceCapture(t.recStartFrame, t.recTargetSamples);
+    let buffer = sliceCapture(t.recStartFrame, t.recTargetSamples);
     recordingTrackId = null;
+    if (buffer){
+      // ガードぶんを戻し、さらにレイテンシ補正ぶん前へ詰める
+      buffer = rotateBufferLeft(buffer, CAPTURE_GUARD_SAMPLES + t.recLatencySamples);
+    }
     if (!buffer){
       t.state = 'empty';
       updateTransportUI(); renderTrackList();
