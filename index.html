@@ -400,8 +400,11 @@
         <div class="reset-row">
           <button id="btnResetBar">小節頭を今にリセット(手動同期)</button>
           <div class="cal-row">
-            <label class="latency-cal" title="録音した音が遅れて聞こえる場合は数値を大きくしてください">
+            <label class="latency-cal" title="録音した音が遅れて聞こえる場合は数値を大きくしてください(入力レイテンシ)">
               録音補正 <input type="number" id="latencyInput" min="0" max="500" step="5" value="0"> ms
+            </label>
+            <label class="latency-cal" title="ループ再生がクロックより遅れて聞こえる場合は数値を大きくしてください(出力レイテンシ)">
+              再生補正 <input type="number" id="playbackInput" min="0" max="300" step="5" value="0"> ms
             </label>
             <label class="latency-cal" title="録音後、しきい値を超えた最初の音が小節頭に来るよう自動でずらします">
               <input type="checkbox" id="autoAdjustToggle"> オートアジャスト
@@ -479,10 +482,10 @@
 
 <script>
 (() => {
-  const APP_VERSION = 'v12';
+  const APP_VERSION = 'v13';
   // デプロイのたびに APP_VERSION / sw.js の CACHE_NAME と一緒に更新する。
   // UTCで持ち、表示時に閲覧者のローカル時刻へ変換する(時差の誤解を避けるため)
-  const APP_BUILT_AT = '2026-08-07T18:14:00Z';
+  const APP_BUILT_AT = '2026-08-07T18:40:00Z';
   console.log('[SYNC LOOPER] Script init start. Version:', APP_VERSION);
   window.addEventListener('error', (e) => {
     console.error('[SYNC LOOPER] window error event:', e.message, e.error);
@@ -527,6 +530,7 @@
     btnClear: document.getElementById('btnClear'),
     btnResetBar: document.getElementById('btnResetBar'),
     latencyInput: document.getElementById('latencyInput'),
+    playbackInput: document.getElementById('playbackInput'),
     autoAdjustToggle: document.getElementById('autoAdjustToggle'),
     autoAdjustThreshold: document.getElementById('autoAdjustThreshold'),
     btnPanic: document.getElementById('btnPanic'),
@@ -710,14 +714,23 @@
   let captureChunks = [];        // { frame, chans:[Float32Array,...] }
   let captureChannels = 0;
   let activeRecStartFrame = 0;
-  const PRE_ROLL_SEC = 0.5;
+  const PRE_ROLL_SEC = 0.85;
   // 切り出し窓を過去側にずらしておく余裕。ワークレットからのメッセージ到着が遅れても
   // 末尾を取りこぼさず、かつ「締切より前にバッファを用意する」ための猶予にもなる。
   // 後段の回転で相殺されるので音のタイミングには影響しない。
-  const CAPTURE_GUARD_SAMPLES = 8192;
-  // 再生開始の何秒前にバッファを組み立て始めるか。
-  // 締切ちょうどに作り始めると、確保とコピーにかかる時間ぶん1周目だけ再生が遅れる。
-  const PLAY_LEAD_SEC = 0.09;
+  // 再生補正ぶんまで前倒しで組み立てられるよう、秒で持ってサンプル数に換算する
+  const CAPTURE_GUARD_SEC = 0.6;
+  let captureGuardSamples = 8192;   // connect() で実際のサンプルレートから設定する
+  // バッファ組み立てに要する時間の見込み。締切ちょうどに作り始めると、
+  // 確保とコピーにかかる時間ぶん1周目だけ再生が遅れる。
+  // 実際の前倒し量は、これに再生補正ぶんを足したもの。
+  const PLAY_LEAD_BASE_SEC = 0.09;
+  function playLeadSec(){ return PLAY_LEAD_BASE_SEC + playbackOffsetMs / 1000; }
+
+  // 再生レイテンシ補正(ms)。予約した時刻より実際に音が出るのは出力レイテンシぶん
+  // 後になるため、その分だけ手前に予約する。値を大きくするほど再生が「前へ」出る。
+  // 録音補正(入力レイテンシ)とは補正する対象が違うので、独立した設定にしている。
+  let playbackOffsetMs = 0;
 
   // 録音レイテンシ補正(ms)。値を大きくするほどループが「前へ」ずれる。
   // マイク入力は遅れて届くコピーなので、キャプチャ列のフレームXには実時間
@@ -759,6 +772,36 @@
   }
   els.latencyInput.addEventListener('change', () => setLatencyOffset(parseFloat(els.latencyInput.value)));
   loadLatencyOffset();
+
+  // ---------- 再生レイテンシ補正 ----------
+  const PLAYBACK_STORAGE_KEY = 'syncLooperPlaybackMs';
+
+  function loadPlaybackOffset(){
+    const raw = localStorage.getItem(PLAYBACK_STORAGE_KEY);
+    if (raw !== null){
+      const v = parseFloat(raw);
+      if (isFinite(v)) playbackOffsetMs = v;
+    }
+    els.playbackInput.value = playbackOffsetMs;
+  }
+  function setPlaybackOffset(ms){
+    // 上限は先読み(ガード)で吸収できる範囲まで
+    playbackOffsetMs = Math.min(300, Math.max(0, isFinite(ms) ? ms : 0));
+    els.playbackInput.value = playbackOffsetMs;
+    try{ localStorage.setItem(PLAYBACK_STORAGE_KEY, String(playbackOffsetMs)); }
+    catch(e){ console.error('[SYNC LOOPER] Failed to save playback offset', e); }
+    console.log('[SYNC LOOPER] Playback offset set to', playbackOffsetMs, 'ms');
+  }
+  // 保存値が無ければ出力レイテンシから初期値を推定する
+  function estimatePlaybackOffset(){
+    if (localStorage.getItem(PLAYBACK_STORAGE_KEY) !== null) return;
+    const seconds = audioCtx.outputLatency || audioCtx.baseLatency || 0;
+    const ms = Math.round(seconds * 1000 / 5) * 5;
+    console.log('[SYNC LOOPER] Estimated output latency:', ms, 'ms');
+    setPlaybackOffset(ms);
+  }
+  els.playbackInput.addEventListener('change', () => setPlaybackOffset(parseFloat(els.playbackInput.value)));
+  loadPlaybackOffset();
 
   // ---------- オートアジャスト(しきい値を超えた最初の音を小節頭に合わせる) ----------
   let autoAdjustEnabled = false;
@@ -1081,6 +1124,7 @@
       els.setupPanel.classList.add('hidden');
       els.performPanel.classList.remove('hidden');
       estimateLatencyOffset();
+      estimatePlaybackOffset();
       requestWakeLock();
       updateBpmModeUI();
       if (syncMode === 'standalone'){
@@ -1173,6 +1217,7 @@
     });
 
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    captureGuardSamples = Math.round(CAPTURE_GUARD_SEC * audioCtx.sampleRate);
     sourceNode = audioCtx.createMediaStreamSource(micStream);
 
     // currentFrame(オーディオスレッド上のサンプル位置)を一緒に送る。
@@ -1287,13 +1332,25 @@
     const posInBar = pulseCount % PULSES_PER_BAR;
     const barBoundary = posInBar === 0;
 
+    // 次の小節頭が来るオーディオクロック時刻(予約に使う)
+    const pulsesToNextBar = PULSES_PER_BAR - posInBar;
+    const nextBarTime = audioCtx && barBoundary
+      ? audioCtx.currentTime
+      : (audioCtx ? audioCtx.currentTime + pulsesToNextBar * secondsPerPulse() : 0);
+    // 小節頭を「検出してから」鳴らすと出力レイテンシぶん必ず遅れるので、
+    // 手前のパルスの時点で小節頭ちょうどに予約してしまう
+    const armLead = playbackOffsetMs / 1000 + 0.1;
+
     for (const t of tracks){
       if (t.state === 'rec-armed'){
         if (isRecStartBoundary(t, barBoundary)) startRecording(t);
-      } else if (t.state === 'recording' && audioCtx.currentTime >= t.recPlayTime - PLAY_LEAD_SEC){
+      } else if (t.state === 'recording' && audioCtx.currentTime >= t.recPlayTime - playLeadSec()){
         // 締切より前倒しで組み立てる。必要な音は既にキャプチャ済み(ガードぶんの余裕)
         stopRecordingAndPlay(t);
+      } else if (t.state === 'play-armed' && !barBoundary && (nextBarTime - audioCtx.currentTime) <= armLead){
+        startPlayback(t, nextBarTime, pulseCount + pulsesToNextBar);
       } else if (t.state === 'play-armed' && barBoundary){
+        // 予約が間に合わなかった場合の保険(即時開始)
         startPlayback(t);
       } else if (t.state === 'stop-armed' && barBoundary){
         stopPlayback(t);
@@ -1338,21 +1395,21 @@
     const sr = audioCtx.sampleRate;
     // 小節頭を認識した時点の再生クロック位置。取りこぼし防止のガードぶんだけ
     // 手前から切り出し、レイテンシ補正と合わせて後段の回転で位相を合わせる
-    t.recStartFrame = Math.round(audioCtx.currentTime * sr) - CAPTURE_GUARD_SAMPLES;
+    t.recStartFrame = Math.round(audioCtx.currentTime * sr) - captureGuardSamples;
     t.recLatencySamples = Math.round(latencyOffsetMs / 1000 * sr);
     // ループ長はチャンク数ではなくテンポから決める(これをしないと周回ごとにずれる)
     t.recTargetSamples = Math.round(t.bars * PULSES_PER_BAR * secondsPerPulse() * sr);
     // ループ再生を始めるべき正確なオーディオクロック時刻。
     // src.start() に渡してオーディオスレッド側で開始させる(メインスレッドの
     // 到着ジッタやバッファ組み立て時間の影響を受けないようにするため)
-    t.recPlayTime = (t.recStartFrame + CAPTURE_GUARD_SAMPLES + t.recTargetSamples) / sr;
+    t.recPlayTime = (t.recStartFrame + captureGuardSamples + t.recTargetSamples) / sr;
     activeRecStartFrame = t.recStartFrame;
     t.state = 'recording';
     // 組み立てはクロックパルス任せにせず専用タイマーで予約する。
     // パルス処理が詰まると判定もその分遅れ、1周目の再生が間に合わなくなるため。
     // (パルス側の判定も保険として残してある)
     if (t.recPrepTimer) clearTimeout(t.recPrepTimer);
-    const leadMs = (t.recPlayTime - PLAY_LEAD_SEC - audioCtx.currentTime) * 1000;
+    const leadMs = (t.recPlayTime - playLeadSec() - audioCtx.currentTime) * 1000;
     t.recPrepTimer = setTimeout(() => {
       t.recPrepTimer = null;
       if (t.state === 'recording') stopRecordingAndPlay(t);
@@ -1375,7 +1432,7 @@
     }
 
     // ガードぶんを戻し、さらにレイテンシ補正ぶん前へ詰める位置
-    let rotation = CAPTURE_GUARD_SAMPLES + t.recLatencySamples;
+    let rotation = captureGuardSamples + t.recLatencySamples;
 
     // オートアジャスト: しきい値を超えた最初の音が小節頭に来るよう回転量を足す。
     // 探索範囲は前後半拍まで(それ以上ずれていると別の拍を掴む危険があるため)。
@@ -1410,7 +1467,7 @@
 
   // when を渡すとその時刻ちょうどに再生を開始する(オーディオスレッド側で正確に発火)。
   // 省略時は即時開始。
-  function startPlayback(t, when){
+  function startPlayback(t, when, atPulse){
     if (!t.buffer || !t.fxChain) return;
     if (t.source){ try{ t.source.stop(); }catch(e){} }
     const src = audioCtx.createBufferSource();
@@ -1420,17 +1477,21 @@
     const now = audioCtx.currentTime;
     let startAt = now;
     if (typeof when === 'number'){
-      if (when > now){
-        startAt = when;
-        console.log('[SYNC LOOPER] Loop scheduled', ((when - now)*1000).toFixed(1), 'ms ahead');
+      // 予約時刻より実際に音が出るのは出力レイテンシぶん後なので、その分手前に出す
+      const target = when - playbackOffsetMs / 1000;
+      if (target > now){
+        startAt = target;
+        console.log('[SYNC LOOPER] Loop scheduled', ((target - now)*1000).toFixed(1),
+                    'ms ahead (再生補正', playbackOffsetMs, 'ms)');
       } else {
-        console.log('[SYNC LOOPER] Loop start missed deadline by', ((now - when)*1000).toFixed(1), 'ms — starting now');
+        console.log('[SYNC LOOPER] Loop start missed deadline by', ((now - target)*1000).toFixed(1), 'ms — starting now');
       }
     }
     src.start(startAt);
     t.source = src;
     t.playStartTime = startAt;
-    t.loopStartPulse = pulseCount;
+    // 予約再生では実際の小節頭のパルスを基準にする(重ね録りの整列基準になるため)
+    t.loopStartPulse = (typeof atPulse === 'number') ? atPulse : pulseCount;
     t.state = 'playing';
     updateTransportUI(); renderTrackList(); updateStatusLine(t);
     if (t.id === selectedId) els.lcdTime.textContent = formatTime(t.buffer.duration*1000);
@@ -1972,7 +2033,7 @@
     // どれか1つでも間に合えば1周目の再生開始は正確な時刻に予約される。
     if (audioCtx){
       for (const tr of tracks){
-        if (tr.state === 'recording' && audioCtx.currentTime >= tr.recPlayTime - PLAY_LEAD_SEC){
+        if (tr.state === 'recording' && audioCtx.currentTime >= tr.recPlayTime - playLeadSec()){
           stopRecordingAndPlay(tr);
         }
       }
