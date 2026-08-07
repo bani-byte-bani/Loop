@@ -338,9 +338,25 @@
   .track-row.selected .track-radio::after{ content:''; position:absolute; inset:3px; border-radius:50%; background:var(--track-color, var(--ink-dim)); }
   .track-letter{ font-family:'Space Grotesk', sans-serif; font-weight:700; font-size:20px; width:20px; flex:none; color:var(--track-color, var(--ink)); }
   .track-body{ flex:1; min-width:0; }
-  .track-mini-bars{ display:flex; gap:2px; height:16px; align-items:flex-end; margin-bottom:5px; }
-  .track-mini-bars span{ flex:1; background:var(--ink-faint); border-radius:1px; min-height:3px; }
-  .track-mini-bars span.filled{ background:var(--track-color, var(--ink-dim)); }
+  /* 常に8小節ぶんの固定の物差し。ループの切れ目に縦線を入れて周回が見えるようにする */
+  .track-mini-bars{
+    position:relative; display:flex; gap:1px; height:18px; align-items:flex-end; margin-bottom:5px;
+  }
+  /* ループの切れ目はバーの上に重ねて描く(背面だと波形に隠れて見えないため) */
+  .track-mini-bars::after{
+    content:''; position:absolute; inset:-2px 0; z-index:1; pointer-events:none;
+    background-image:repeating-linear-gradient(90deg,
+      rgba(28,31,34,0.60) 0 1px, transparent 1px var(--loop-pct, 100%));
+  }
+  .track-mini-bars span{ flex:1; background:var(--ink-faint); border-radius:1px; min-height:2px; opacity:0.5; }
+  .track-mini-bars span.filled{ background:var(--track-color, var(--ink-dim)); opacity:1; }
+  /* トラックセレクト上の再生ヘッド(8小節グリッド上の現在位置) */
+  .track-playhead{
+    position:absolute; top:-2px; bottom:-2px; left:0; width:1px;
+    background:var(--red); opacity:0; pointer-events:none; z-index:2;
+    box-shadow:0 0 4px var(--red);
+  }
+  .track-playhead.on{ opacity:0.95; }
   .track-meta{ display:flex; justify-content:space-between; font-family:'JetBrains Mono', monospace; font-size:10px; color:var(--ink-dim); }
   .track-state-dot{ width:6px; height:6px; border-radius:50%; background:var(--ink-faint); flex:none; }
   .track-state-dot.rec{ background:var(--red); box-shadow:0 0 5px var(--red); }
@@ -608,10 +624,10 @@
 
 <script>
 (() => {
-  const APP_VERSION = 'v16';
+  const APP_VERSION = 'v17';
   // デプロイのたびに APP_VERSION / sw.js の CACHE_NAME と一緒に更新する。
   // UTCで持ち、表示時に閲覧者のローカル時刻へ変換する(時差の誤解を避けるため)
-  const APP_BUILT_AT = '2026-08-07T22:02:00Z';
+  const APP_BUILT_AT = '2026-08-07T22:11:00Z';
   console.log('[SYNC LOOPER] Script init start. Version:', APP_VERSION);
   window.addEventListener('error', (e) => {
     console.error('[SYNC LOOPER] window error event:', e.message, e.error);
@@ -2013,18 +2029,36 @@
   // ミニ波形はバッファ全体を走査するので、バッファ単位で結果をキャッシュする
   // (リバース時は別バッファになるため自動的に再計算される)
   const miniBarsCache = new WeakMap();
+  // ミニ波形は「常に最大小節数(8小節)ぶんの固定の物差し」で描く。
+  // 短いループはその中で繰り返し表示されるので、
+  // 2小節のトラックなら8小節の枠に同じ波形が4回並ぶ。
+  const MINI_SEGMENTS = 32;   // 8小節 × 4拍
+
+  function segmentsPerLoop(t){
+    return Math.max(1, Math.round(MINI_SEGMENTS * t.bars / MAX_BARS));
+  }
+
   function trackMiniBars(t){
-    if (!t.buffer){ return Array.from({length:8}, () => `<span></span>`).join(''); }
+    const perLoop = segmentsPerLoop(t);
+    if (!t.buffer){
+      return Array.from({length: MINI_SEGMENTS}, () => '<span></span>').join('');
+    }
     const cached = miniBarsCache.get(t.buffer);
     if (cached !== undefined) return cached;
     const data = t.buffer.getChannelData(0);
-    const step = Math.floor(data.length/8) || 1;
-    let out = '';
-    for (let i=0;i<8;i++){
+    const step = Math.floor(data.length / perLoop) || 1;
+    // ループ1周ぶんのピークを求めてから、8小節ぶんに敷き詰める
+    const peaks = [];
+    for (let i=0;i<perLoop;i++){
       let peak = 0;
       const start = i*step;
       for (let j=0;j<step;j++){ const v = Math.abs(data[start+j] || 0); if (v>peak) peak = v; }
-      const h = Math.max(15, Math.min(100, peak*140));
+      peaks.push(peak);
+    }
+    let out = '';
+    for (let i=0;i<MINI_SEGMENTS;i++){
+      // 平方根で圧縮する。線形だと少し大きい音がすべて振り切って塊に見えるため
+      const h = Math.max(10, Math.min(100, Math.sqrt(peaks[i % perLoop]) * 100));
       out += `<span class="filled" style="height:${h}%"></span>`;
     }
     miniBarsCache.set(t.buffer, out);
@@ -2041,7 +2075,7 @@
           <span class="track-radio"></span>
           <span class="track-letter">${t.id}</span>
           <div class="track-body">
-            <div class="track-mini-bars">${trackMiniBars(t)}</div>
+            <div class="track-mini-bars" style="--loop-pct:${(segmentsPerLoop(t)/MINI_SEGMENTS*100).toFixed(4)}%">${trackMiniBars(t)}<span class="track-playhead" data-ph="${t.id}"></span></div>
             <div class="track-meta">
               <span><span class="track-state-dot ${dotClass}"></span> ${label}</span>
               <span>${dur}</span>
@@ -2380,6 +2414,19 @@
     }
   }
 
+  // トラックセレクト側の再生ヘッド。8小節グリッド上の現在位置を示す
+  function updateTrackPlayheads(){
+    const gridTotal = MAX_BARS * PULSES_PER_BAR;
+    const gridFrac = mod(pulseCount, gridTotal) / gridTotal;
+    const left = (gridFrac * 100) + '%';
+    for (const el of els.trackList.querySelectorAll('.track-playhead')){
+      const tr = tracks.find(x => x.id === el.dataset.ph);
+      const active = running && tr && (tr.state === 'playing' || tr.state === 'recording');
+      el.classList.toggle('on', !!active);
+      if (active) el.style.left = left;
+    }
+  }
+
   function playheadLoop(){
     // 締切チェックの3系統目(専用タイマー・クロックパルスが詰まった場合の保険)。
     // どれか1つでも間に合えば1周目の再生開始は正確な時刻に予約される。
@@ -2400,6 +2447,7 @@
     } else {
       els.playhead.classList.add('hidden');
     }
+    updateTrackPlayheads();
     requestAnimationFrame(playheadLoop);
   }
 
