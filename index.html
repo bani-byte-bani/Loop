@@ -11,59 +11,69 @@
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#c9c2b0;
-    --body-a:#f2eee2;
-    --body-b:#ddd6c4;
-    --panel:#eae4d6;
-    --shell-edge:#b8b09c;
-    --ink:#2b2820;
-    --ink-dim:#8a8271;
-    --ink-faint:#b3ab98;
-    --line:#c1b9a6;
-    --screen-bg:#12140f;
-    --screen-fg:#6fc7ff;
-    --red:#c23b2e;
-    --green:#3f8f5f;
-    --pink:#c2588f;
-    --blue:#3e6bcf;
-    --amber:#c9862f;
-    --active-track-color:var(--red);
+    /* グレーベースの東独工業機器風パレット。
+       灰色の筐体に、信号色は彩度を落として最小限だけ使う */
+    --bg:#7d817c;
+    --body-a:#cbcec9;
+    --body-b:#b4b8b3;
+    --panel:#c1c4bf;
+    --sunk:#b0b3ae;        /* 一段沈んだ面 */
+    --shell-edge:#8d918c;
+    --ink:#1e2124;
+    --ink-dim:#5d625f;
+    --ink-faint:#8b8f8b;
+    --line:#a0a49f;
+    --screen-bg:#0f120e;
+    --screen-fg:#7fd08a;   /* 蛍光表示管の緑 */
+    --red:#9c3a2b;
+    --green:#4a7a4f;
+    --amber:#ad7f2b;
+    /* トラック識別色(グレー基調に馴染むよう彩度を落とした信号色) */
+    --track-a:#9c3a2b;
+    --track-b:#4a7a4f;
+    --track-c:#8a6a35;
+    --track-d:#4c6379;
+    --active-track-color:var(--track-a);
+    /* 余白と角丸を一定にするためのトークン */
+    --gap:12px;
+    --pad:14px;
+    --radius:4px;
   }
   *{box-sizing:border-box;}
   body{
     margin:0;
     min-height:100vh;
-    background:radial-gradient(circle at 50% -20%, #d8d1bf 0%, var(--bg) 60%);
+    background:linear-gradient(180deg, #8a8e89 0%, var(--bg) 55%);
     color:var(--ink);
     font-family:'Noto Sans JP', sans-serif;
     display:flex;
     justify-content:center;
-    padding:32px 14px 80px;
+    padding:20px 14px 64px;
   }
   .console{
     width:100%;
-    max-width:860px;
-    background:linear-gradient(160deg, var(--body-a) 0%, var(--body-b) 100%);
+    max-width:880px;
+    background:linear-gradient(170deg, var(--body-a) 0%, var(--body-b) 100%);
     border:1px solid var(--shell-edge);
-    border-radius:20px;
-    padding:20px;
-    box-shadow:0 30px 60px -24px rgba(30,25,15,0.45), inset 0 1px 0 rgba(255,255,255,0.6);
+    border-radius:var(--radius);
+    padding:var(--pad);
+    box-shadow:0 18px 40px -20px rgba(20,24,20,0.55), inset 0 1px 0 rgba(255,255,255,0.45);
   }
-  .brand-row{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; flex-wrap:wrap; row-gap:8px; }
+  .brand-row{ display:flex; align-items:center; justify-content:space-between; margin-bottom:var(--gap); flex-wrap:wrap; row-gap:8px; }
   .brand{ font-family:'Space Grotesk', sans-serif; font-weight:700; font-size:16px; }
   .brand-sub{ font-family:'JetBrains Mono', monospace; font-size:9px; letter-spacing:0.18em; color:var(--ink-dim); margin-top:2px; }
   .brand-right{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; row-gap:8px; justify-content:flex-end; }
-  .sync-mode-badge{ font-family:'JetBrains Mono', monospace; font-size:8px; letter-spacing:0.1em; color:var(--ink-dim); background:#f4f0e5; border:1px solid var(--line); border-radius:4px; padding:2px 6px; }
+  .sync-mode-badge{ font-family:'JetBrains Mono', monospace; font-size:8px; letter-spacing:0.1em; color:var(--ink-dim); background:var(--sunk); border:1px solid var(--line); border-radius:4px; padding:2px 6px; }
   .led-mini{ width:7px;height:7px;border-radius:50%; background:var(--red); opacity:0.25; transition:opacity .15s, box-shadow .15s; }
   .led-mini.on{ opacity:1; box-shadow:0 0 6px var(--red); }
   .learn-toggle{
     font-family:'JetBrains Mono', monospace;
     font-size:9px;
     letter-spacing:0.1em;
-    padding:6px 10px;
-    border-radius:20px;
+    padding:5px 9px;
+    border-radius:3px;
     border:1px solid var(--line);
-    background:#f4f0e5;
+    background:var(--sunk);
     color:var(--ink-dim);
     cursor:pointer;
   }
@@ -79,7 +89,7 @@
     font-size:8px;
     letter-spacing:0.08em;
     padding:5px 9px;
-    border-radius:6px;
+    border-radius:3px;
     border:1px solid var(--red);
     background:var(--red);
     color:#fff;
@@ -91,10 +101,10 @@
     font-family:'JetBrains Mono', monospace;
     font-size:9px;
     letter-spacing:0.1em;
-    padding:6px 10px;
-    border-radius:20px;
+    padding:5px 9px;
+    border-radius:3px;
     border:1px solid var(--line);
-    background:#f4f0e5;
+    background:var(--sunk);
     color:var(--ink-dim);
     cursor:pointer;
   }
@@ -107,52 +117,50 @@
     font-family:'JetBrains Mono', monospace;
     font-size:10px;
     color:#8a5a1c;
-    background:#f7ecd8;
+    background:var(--sunk);
     border:1px solid var(--amber);
-    border-radius:6px;
+    border-radius:var(--radius);
     padding:6px 10px;
-    margin-bottom:10px;
+    margin-bottom:var(--gap);
   }
-  .hairline{ height:1px; background:linear-gradient(90deg, transparent, var(--line) 12%, var(--line) 88%, transparent); margin:14px 0; }
+  .hairline{ height:1px; background:var(--line); opacity:0.6; margin:var(--gap) 0; }
   .hidden{ display:none !important; }
 
   /* setup */
   .setup label{ display:block; font-family:'JetBrains Mono', monospace; font-size:10px; letter-spacing:0.1em; color:var(--ink-dim); margin-bottom:6px; text-transform:uppercase; }
-  .setup select, .setup input[type="number"]{ width:100%; padding:10px; margin-bottom:12px; background:#f7f4ec; color:var(--ink); border:1px solid var(--line); border-radius:8px; font-family:'Noto Sans JP', sans-serif; font-size:13px; }
+  .setup select, .setup input[type="number"]{ width:100%; padding:10px; margin-bottom:12px; background:var(--sunk); color:var(--ink); border:1px solid var(--line); border-radius:var(--radius); font-family:'Noto Sans JP', sans-serif; font-size:13px; }
   .mode-toggle{ display:flex; gap:8px; margin-bottom:12px; }
-  .mode-toggle button{ flex:1; padding:10px; border-radius:8px; border:1px solid var(--line); background:#f7f4ec; color:var(--ink-dim); font-family:'JetBrains Mono', monospace; font-size:11px; letter-spacing:0.04em; cursor:pointer; }
+  .mode-toggle button{ flex:1; padding:10px; border-radius:var(--radius); border:1px solid var(--line); background:var(--sunk); color:var(--ink-dim); font-family:'JetBrains Mono', monospace; font-size:11px; letter-spacing:0.04em; cursor:pointer; }
   .mode-toggle button.active{ background:var(--ink); color:var(--body-a); border-color:var(--ink); }
-  .btn-slab{ width:100%; cursor:pointer; padding:14px; border-radius:10px; border:1px solid var(--shell-edge); background:linear-gradient(180deg,#f7f4ec,#e6e0cf); color:var(--ink); font-family:'Space Grotesk', sans-serif; font-weight:700; font-size:13px; box-shadow:0 2px 0 rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.7); }
+  .btn-slab{ width:100%; cursor:pointer; padding:14px; border-radius:var(--radius); border:1px solid var(--shell-edge); background:linear-gradient(180deg,var(--body-a),var(--body-b)); color:var(--ink); font-family:'Space Grotesk', sans-serif; font-weight:700; font-size:13px; box-shadow:0 2px 0 rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.7); }
   .btn-slab:active{ transform:translateY(1px); }
   .error{ color:var(--red); font-size:11px; margin-top:10px; font-family:'JetBrains Mono', monospace; }
 
   /* main grid */
-  #performPanel{ display:flex; flex-direction:column; gap:16px; }
-  .main-grid{ display:grid; grid-template-columns:1fr; gap:16px; align-items:start; }
-  .lower-grid{ display:grid; grid-template-columns:1fr; gap:16px; align-items:start; }
-  @media (min-width:720px){ .main-grid{ grid-template-columns:1.15fr 1fr; } }
+  #performPanel{ display:flex; flex-direction:column; gap:var(--gap); }
+  .main-grid{ display:grid; grid-template-columns:1fr; gap:var(--gap); align-items:start; }
+  .lower-grid{ display:grid; grid-template-columns:1fr; gap:var(--gap); align-items:start; }
+  .side-col{ display:flex; flex-direction:column; gap:var(--gap); }
+  @media (min-width:720px){ .main-grid{ grid-template-columns:0.95fr 1.05fr; } }
 
   /* ワイド画面: コンソールを広げ、下段の2カードを横並びにして
      スクロールせずに全体が見えるようにする */
   @media (min-width:1200px){
-    .console{ max-width:1240px; }
+    .console{ max-width:1200px; }
     .lower-grid{ grid-template-columns:1fr 1fr; }
     /* 画面が広い分ダイヤルを大きくし、離れた位置からも読めるようにする */
-    .dial-wrap{ width:260px; height:260px; }
-    .dial-bpm{ font-size:36px; }
-    /* ボタンが間延びしないよう横幅を制限しつつ中央に寄せる */
-    .transport{ max-width:560px; margin:0 auto; }
+    .dial-wrap{ width:250px; height:250px; }
+    .dial-bpm{ font-size:34px; }
   }
   @media (min-width:1600px){
-    .console{ max-width:1480px; }
-    .main-grid{ grid-template-columns:1.2fr 1fr; }
-    .dial-wrap{ width:300px; height:300px; }
-    .dial-bpm{ font-size:42px; }
+    .console{ max-width:1360px; }
+    .dial-wrap{ width:280px; height:280px; }
+    .dial-bpm{ font-size:38px; }
   }
 
-  .card{ background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px; }
-  .card h2{ margin:0 0 12px; font-family:'JetBrains Mono', monospace; font-size:10px; letter-spacing:0.16em; color:var(--ink-dim); text-transform:uppercase; }
-  .card.collapsible{ padding:16px; }
+  .card{ background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:var(--pad); }
+  .card h2{ margin:0 0 var(--gap); font-family:'JetBrains Mono', monospace; font-size:10px; letter-spacing:0.16em; color:var(--ink-dim); text-transform:uppercase; }
+  .card.collapsible{ padding:var(--pad); }
   .card.collapsible summary{
     margin:0; font-family:'JetBrains Mono', monospace; font-size:10px; letter-spacing:0.16em;
     color:var(--ink-dim); text-transform:uppercase; cursor:pointer; list-style:none;
@@ -161,44 +169,47 @@
   .card.collapsible summary::-webkit-details-marker{ display:none; }
   .card.collapsible summary::after{ content:'▸'; font-size:10px; transition:transform .15s ease; }
   .card.collapsible[open] summary::after{ transform:rotate(90deg); }
-  .card.collapsible[open] summary{ margin-bottom:12px; }
+  .card.collapsible[open] summary{ margin-bottom:var(--gap); }
   .card.collapsible[open] > *:not(summary){ margin-top:0; }
 
-  .lcd{ background:var(--screen-bg); border-radius:6px; padding:9px 13px; display:flex; align-items:baseline; justify-content:space-between; box-shadow:inset 0 2px 6px rgba(0,0,0,0.6); margin-bottom:16px; }
+  .lcd{ background:var(--screen-bg); border-radius:var(--radius); padding:9px 13px; display:flex; align-items:baseline; justify-content:space-between; box-shadow:inset 0 2px 6px rgba(0,0,0,0.6); margin-bottom:var(--gap); }
   .lcd-time{ font-family:'JetBrains Mono', monospace; font-size:18px; color:var(--screen-fg); letter-spacing:0.05em; text-shadow:0 0 8px rgba(111,199,255,0.5); font-variant-numeric:tabular-nums; }
   .lcd-tag{ font-family:'JetBrains Mono', monospace; font-size:9px; color:var(--screen-fg); opacity:0.7; letter-spacing:0.14em; }
 
-  .dial-wrap{ position:relative; width:210px; height:210px; margin:4px auto 6px; }
+  .dial-wrap{ position:relative; width:210px; height:210px; margin:0 auto; }
   .dial-svg{ width:100%; height:100%; transform:rotate(-90deg); }
-  .dial-face{ fill:#efe9db; stroke:var(--line); stroke-width:1; }
+  .dial-face{ fill:var(--sunk); stroke:var(--line); stroke-width:1; }
   .dial-progress{ fill:none; stroke:var(--ink-dim); stroke-width:3; stroke-linecap:round; transition:stroke-dashoffset .05s linear, stroke .2s ease; }
   .dial-progress.rec{ stroke:var(--red); }
   .dial-progress.play{ stroke:var(--green); }
   .dial-progress.armed{ stroke:var(--amber); }
+  /* 外周の輪: 最大小節数(8小節)のうち今どこかを示す */
+  .dial-overall-track{ fill:none; stroke:var(--line); stroke-width:2; opacity:0.55; }
+  .dial-overall{ fill:none; stroke:var(--ink-dim); stroke-width:2; stroke-linecap:butt; opacity:0.85; transition:stroke-dashoffset .05s linear; }
   .tick{ stroke:var(--ink-dim); stroke-width:1; opacity:0.5; }
   .tick.bar-start{ stroke:var(--ink); stroke-width:1.6; opacity:0.85; }
   .dial-center{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; pointer-events:none; }
   .dial-track-label{ font-family:'JetBrains Mono', monospace; font-size:11px; color:var(--ink-dim); letter-spacing:0.1em; margin-bottom:4px; }
   .dial-bpm{ font-family:'JetBrains Mono', monospace; font-weight:700; font-size:30px; line-height:1; }
   .dial-bpm-edit{ display:flex; align-items:center; gap:6px; pointer-events:auto; }
-  .bpm-step{ pointer-events:auto; width:22px; height:22px; border-radius:50%; border:1px solid var(--line); background:#f4f0e5; color:var(--ink-dim); font-family:'JetBrains Mono', monospace; font-size:14px; cursor:pointer; line-height:1; }
+  .bpm-step{ pointer-events:auto; width:22px; height:22px; border-radius:50%; border:1px solid var(--line); background:var(--sunk); color:var(--ink-dim); font-family:'JetBrains Mono', monospace; font-size:14px; cursor:pointer; line-height:1; }
   .bpm-input{ width:70px; text-align:center; font-family:'JetBrains Mono', monospace; font-weight:700; font-size:26px; border:none; border-bottom:1px dashed var(--line); background:transparent; color:var(--ink); pointer-events:auto; }
   .bpm-input::-webkit-outer-spin-button, .bpm-input::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
   .dial-bpm-unit{ font-family:'JetBrains Mono', monospace; font-size:9px; color:var(--ink-dim); letter-spacing:0.2em; margin-top:3px; }
-  .tap-btn{ pointer-events:auto; margin-top:6px; font-family:'JetBrains Mono', monospace; font-size:9px; letter-spacing:0.12em; padding:4px 12px; border-radius:12px; border:1px solid var(--line); background:#f4f0e5; color:var(--ink-dim); cursor:pointer; }
+  .tap-btn{ pointer-events:auto; margin-top:6px; font-family:'JetBrains Mono', monospace; font-size:9px; letter-spacing:0.12em; padding:4px 12px; border-radius:var(--radius); border:1px solid var(--line); background:var(--sunk); color:var(--ink-dim); cursor:pointer; }
   .tap-btn:active{ background:var(--amber); color:#2a1a06; }
   .dial-pos{ font-family:'JetBrains Mono', monospace; font-size:10px; color:var(--ink-dim); margin-top:7px; }
 
-  .bars-row{ display:flex; gap:6px; justify-content:center; margin:12px 0 4px; }
-  .bars-row button{ width:36px; height:36px; border-radius:50%; border:1px solid var(--line); background:#f4f0e5; color:var(--ink-dim); font-family:'JetBrains Mono', monospace; font-weight:700; font-size:12px; cursor:pointer; }
+  .bars-row{ display:flex; gap:6px; justify-content:center; margin:var(--gap) 0 4px; }
+  .bars-row button{ width:36px; height:36px; border-radius:50%; border:1px solid var(--line); background:var(--sunk); color:var(--ink-dim); font-family:'JetBrains Mono', monospace; font-weight:700; font-size:12px; cursor:pointer; }
   .bars-row button.active{ background:var(--ink); color:var(--body-a); border-color:var(--ink); }
   .bars-row button:disabled{ opacity:0.4; cursor:not-allowed; }
-  .bars-caption{ text-align:center; font-family:'JetBrains Mono', monospace; font-size:9px; color:var(--ink-dim); letter-spacing:0.14em; margin-bottom:14px; }
+  .bars-caption{ text-align:center; font-family:'JetBrains Mono', monospace; font-size:9px; color:var(--ink-dim); letter-spacing:0.14em; margin-bottom:var(--gap); }
 
-  .state-line{ text-align:center; font-family:'JetBrains Mono', monospace; font-size:11px; color:var(--ink-dim); margin-bottom:12px; min-height:14px; }
+  .state-line{ text-align:center; font-family:'JetBrains Mono', monospace; font-size:11px; color:var(--ink-dim); margin-bottom:var(--gap); min-height:14px; }
 
   .transport{ display:grid; grid-template-columns:repeat(4,1fr); gap:9px; }
-  .deck-btn{ position:relative; aspect-ratio:1; border-radius:12px; border:1px solid var(--shell-edge); background:linear-gradient(180deg,#f7f4ec,#e2dbc8); box-shadow:0 2px 0 rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.7); cursor:pointer; display:flex; align-items:center; justify-content:center; }
+  .deck-btn{ position:relative; aspect-ratio:1; border-radius:var(--radius); border:1px solid var(--shell-edge); background:linear-gradient(180deg,var(--body-a),var(--body-b)); box-shadow:0 2px 0 rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.7); cursor:pointer; display:flex; align-items:center; justify-content:center; }
   .deck-btn:active{ transform:translateY(1px); }
   .deck-btn:disabled{ opacity:0.35; cursor:not-allowed; }
   .deck-glyph{ width:19px; height:19px; }
@@ -218,19 +229,19 @@
   @keyframes blinkbg3{ 50%{ background:linear-gradient(180deg,#f7ecd8,#f0dcb0); } }
   #btnClear .deck-glyph line{ stroke:var(--ink); }
 
-  .reset-row{ text-align:center; margin-top:12px; display:flex; flex-direction:column; align-items:center; gap:8px; }
+  .reset-row{ text-align:center; margin-top:var(--gap); display:flex; flex-direction:column; align-items:center; gap:8px; }
   .reset-row button{ background:none; border:none; cursor:pointer; font-family:'JetBrains Mono', monospace; font-size:10px; color:var(--ink-dim); text-decoration:underline; }
   .cal-row{ display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:6px 14px; }
   .latency-cal{ font-family:'JetBrains Mono', monospace; font-size:9px; letter-spacing:0.06em; color:var(--ink-dim); display:inline-flex; align-items:center; gap:5px; cursor:pointer; }
-  .latency-cal input[type="number"]{ width:54px; padding:3px 5px; text-align:center; font-family:'JetBrains Mono', monospace; font-size:10px; border:1px solid var(--line); border-radius:5px; background:#f7f4ec; color:var(--ink); }
+  .latency-cal input[type="number"]{ width:54px; padding:3px 5px; text-align:center; font-family:'JetBrains Mono', monospace; font-size:10px; border:1px solid var(--line); border-radius:var(--radius); background:var(--sunk); color:var(--ink); }
   .latency-cal input[type="checkbox"]{ width:13px; height:13px; accent-color:var(--amber); cursor:pointer; margin:0; }
 
   /* track select */
   .track-row{ display:flex; align-items:center; gap:12px; padding:12px 4px; border-bottom:1px solid var(--line); cursor:pointer; }
   .track-row:last-child{ border-bottom:none; }
   .track-radio{ width:20px; height:20px; border-radius:50%; border:2px solid var(--ink-faint); flex:none; position:relative; }
-  .track-row.selected .track-radio{ border-color:var(--track-color, var(--blue)); }
-  .track-row.selected .track-radio::after{ content:''; position:absolute; inset:3px; border-radius:50%; background:var(--track-color, var(--blue)); }
+  .track-row.selected .track-radio{ border-color:var(--track-color, var(--ink-dim)); }
+  .track-row.selected .track-radio::after{ content:''; position:absolute; inset:3px; border-radius:50%; background:var(--track-color, var(--ink-dim)); }
   .track-letter{ font-family:'Space Grotesk', sans-serif; font-weight:700; font-size:20px; width:20px; flex:none; color:var(--track-color, var(--ink)); }
   .track-body{ flex:1; min-width:0; }
   .track-mini-bars{ display:flex; gap:2px; height:16px; align-items:flex-end; margin-bottom:5px; }
@@ -249,10 +260,10 @@
   /* effects */
   .effects-grid{ display:grid; grid-template-columns:repeat(5,1fr); gap:8px; }
   .fx-cell{ display:flex; flex-direction:column; gap:6px; }
-  .fx-toggle{ background:#f4f0e5; border:1px solid var(--line); border-radius:10px; padding:12px 4px 8px; cursor:pointer; text-align:center; position:relative; width:100%; }
+  .fx-toggle{ background:var(--sunk); border:1px solid var(--line); border-radius:var(--radius); padding:12px 4px 8px; cursor:pointer; text-align:center; position:relative; width:100%; }
   .fx-toggle .fx-dot{ width:6px; height:6px; border-radius:50%; background:var(--ink-faint); margin:0 auto 6px; }
   .fx-toggle.on .fx-dot{ background:var(--active-track-color); box-shadow:0 0 6px var(--active-track-color); }
-  .fx-toggle.on{ background:#f7eede; border-color:var(--active-track-color); }
+  .fx-toggle.on{ background:var(--sunk); border-color:var(--active-track-color); }
   .fx-toggle.pending{ animation:fxpendingpulse 0.6s ease-in-out infinite; }
   @keyframes fxpendingpulse{ 50%{ box-shadow:0 0 0 2px var(--amber) inset; } }
   .fx-amount{ width:100%; height:14px; accent-color:var(--active-track-color); cursor:pointer; }
@@ -260,11 +271,11 @@
   .fx-icon{ width:22px; height:22px; margin:0 auto 6px; }
   .fx-icon svg{ width:100%; height:100%; stroke:var(--ink); fill:none; stroke-width:1.6; }
   .fx-label{ font-family:'JetBrains Mono', monospace; font-size:8px; letter-spacing:0.08em; color:var(--ink-dim); }
-  .fx-caption{ text-align:center; font-family:'JetBrains Mono', monospace; font-size:9px; color:var(--ink-dim); letter-spacing:0.1em; margin-top:10px; }
+  .fx-caption{ text-align:center; font-family:'JetBrains Mono', monospace; font-size:9px; color:var(--ink-dim); letter-spacing:0.1em; margin-top:var(--gap); }
 
   /* timeline (Track Selectカードに統合) */
-  .timeline-caption{ margin-top:14px; margin-bottom:6px; font-family:'JetBrains Mono', monospace; font-size:9px; color:var(--ink-dim); letter-spacing:0.1em; }
-  .timeline-wrap{ position:relative; height:90px; background:#f4f0e5; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  .timeline-caption{ margin-top:var(--gap); margin-bottom:6px; font-family:'JetBrains Mono', monospace; font-size:9px; color:var(--ink-dim); letter-spacing:0.1em; }
+  .timeline-wrap{ position:relative; height:90px; background:var(--sunk); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; }
   .timeline-wrap canvas{ width:100%; height:100%; display:block; }
   .playhead{ position:absolute; top:0; bottom:0; width:1px; background:var(--red); left:0; }
   .timeline-empty{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:'JetBrains Mono', monospace; font-size:11px; color:var(--ink-faint); letter-spacing:0.1em; }
@@ -272,7 +283,7 @@
   /* midi mappings */
   .mapping-row{ display:flex; align-items:center; gap:8px; padding:8px 4px; border-bottom:1px solid var(--line); font-family:'JetBrains Mono', monospace; font-size:11px; }
   .mapping-row:last-child{ border-bottom:none; }
-  .mapping-trigger{ color:var(--ink); background:#f4f0e5; border:1px solid var(--line); border-radius:6px; padding:2px 6px; white-space:nowrap; }
+  .mapping-trigger{ color:var(--ink); background:var(--sunk); border:1px solid var(--line); border-radius:var(--radius); padding:2px 6px; white-space:nowrap; }
   .mapping-arrow{ color:var(--ink-faint); }
   .mapping-action{ flex:1; color:var(--ink-dim); }
   .mapping-remove{ background:none; border:none; color:var(--red); cursor:pointer; font-size:14px; line-height:1; padding:2px 6px; }
@@ -288,7 +299,7 @@
     font-size:9px;
     letter-spacing:0.14em;
     color:var(--ink-dim);
-    background:rgba(242,238,226,0.88);
+    background:rgba(190,194,189,0.92);
     border-top:1px solid var(--line);
     padding:6px 10px calc(6px + env(safe-area-inset-bottom, 0px));
     backdrop-filter:blur(6px);
@@ -355,7 +366,9 @@
             <line class="dial-cross" x1="50" y1="6" x2="50" y2="14" stroke="var(--line)"></line>
             <line class="dial-cross" x1="50" y1="86" x2="50" y2="94" stroke="var(--line)"></line>
             <g id="dialTicks"></g>
-            <circle id="dialProgress" class="dial-progress" cx="50" cy="50" r="40" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"></circle>
+            <circle class="dial-overall-track" cx="50" cy="50" r="34.5"></circle>
+            <circle id="dialOverall" class="dial-overall" cx="50" cy="50" r="34.5" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"></circle>
+            <circle id="dialProgress" class="dial-progress" cx="50" cy="50" r="41" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"></circle>
           </svg>
           <div class="dial-center">
             <div class="dial-track-label" id="dialTrackLabel">TRACK A</div>
@@ -400,6 +413,7 @@
         </div>
       </div>
 
+      <div class="side-col">
       <div class="card synced-card" id="trackPanelCard">
         <h2>Track Select</h2>
         <div id="trackList"></div>
@@ -410,9 +424,8 @@
           <div class="timeline-empty" id="timelineEmpty">EMPTY</div>
         </div>
       </div>
-    </div>
 
-    <div class="card synced-card" id="fxCard">
+      <div class="card synced-card" id="fxCard">
       <h2>Effects — <span id="fxTrackLabel">TRACK A</span></h2>
       <div class="effects-grid" id="effectsGrid">
         <div class="fx-cell" data-fx="reverb">
@@ -436,7 +449,9 @@
           <input type="range" class="fx-amount" min="0" max="100" value="50">
         </div>
       </div>
-      <div class="fx-caption">エフェクトは選択中トラックに個別にかかります</div>
+        <div class="fx-caption">エフェクトは選択中トラックに個別にかかります</div>
+      </div>
+      </div>
     </div>
 
     <div class="lower-grid">
@@ -464,10 +479,10 @@
 
 <script>
 (() => {
-  const APP_VERSION = 'v11';
+  const APP_VERSION = 'v12';
   // デプロイのたびに APP_VERSION / sw.js の CACHE_NAME と一緒に更新する。
   // UTCで持ち、表示時に閲覧者のローカル時刻へ変換する(時差の誤解を避けるため)
-  const APP_BUILT_AT = '2026-08-07T17:38:00Z';
+  const APP_BUILT_AT = '2026-08-07T18:14:00Z';
   console.log('[SYNC LOOPER] Script init start. Version:', APP_VERSION);
   window.addEventListener('error', (e) => {
     console.error('[SYNC LOOPER] window error event:', e.message, e.error);
@@ -502,6 +517,7 @@
     posLabel: document.getElementById('posLabel'),
     dialTicks: document.getElementById('dialTicks'),
     dialProgress: document.getElementById('dialProgress'),
+    dialOverall: document.getElementById('dialOverall'),
     dialTrackLabel: document.getElementById('dialTrackLabel'),
     barsSelect: document.getElementById('barsSelect'),
     stateLine: document.getElementById('stateLine'),
@@ -664,7 +680,7 @@
   function mod(a, n){ return ((a % n) + n) % n; }
 
   // ---------- トラック色分け ----------
-  const TRACK_COLOR_VARS = { A:'--red', B:'--green', C:'--pink', D:'--blue' };
+  const TRACK_COLOR_VARS = { A:'--track-a', B:'--track-b', C:'--track-c', D:'--track-d' };
   function applyActiveTrackColor(id){
     const varName = TRACK_COLOR_VARS[id] || '--amber';
     document.documentElement.style.setProperty('--active-track-color', `var(${varName})`);
@@ -673,8 +689,8 @@
 
   const tracks = ['A','B','C','D'].map(id => ({
     id, bars:4, buffer:null, originalBuffer:null, reversed:false,
-    source:null, state:'empty', recordTargetPulse:0, playStartTime:0,
-    recStartFrame:0, recTargetSamples:0, recLatencySamples:0,
+    source:null, state:'empty', playStartTime:0,
+    recStartFrame:0, recTargetSamples:0, recLatencySamples:0, recPlayTime:0, recPrepTimer:null,
     loopStartPulse:0, recAlignRefId:null, recAlignRefLen:0, recAlignRefStart:0,
     fx:{ reverb:false, delay:false, filter:false, reverse:false, tape:false },
     fxPending:{ reverb:null, delay:null, filter:null, reverse:null, tape:null },
@@ -695,9 +711,13 @@
   let captureChannels = 0;
   let activeRecStartFrame = 0;
   const PRE_ROLL_SEC = 0.5;
-  // 切り出し窓を少し過去にずらしておく余裕。ワークレットからのメッセージ到着が
-  // わずかに遅れても末尾を取りこぼさないようにし、後段の回転で相殺する。
-  const CAPTURE_GUARD_SAMPLES = 2048;
+  // 切り出し窓を過去側にずらしておく余裕。ワークレットからのメッセージ到着が遅れても
+  // 末尾を取りこぼさず、かつ「締切より前にバッファを用意する」ための猶予にもなる。
+  // 後段の回転で相殺されるので音のタイミングには影響しない。
+  const CAPTURE_GUARD_SAMPLES = 8192;
+  // 再生開始の何秒前にバッファを組み立て始めるか。
+  // 締切ちょうどに作り始めると、確保とコピーにかかる時間ぶん1周目だけ再生が遅れる。
+  const PLAY_LEAD_SEC = 0.09;
 
   // 録音レイテンシ補正(ms)。値を大きくするほどループが「前へ」ずれる。
   // マイク入力は遅れて届くコピーなので、キャプチャ列のフレームXには実時間
@@ -774,7 +794,7 @@
   // 位置0に最も近い「しきい値を超える点」を探し、0からのサンプル差を返す。
   // 前(末尾に回り込んでいる場合)も探すため戻り値は負にもなる。見つからなければ null。
   // しきい値はループ内のピークに対する相対値なので、入力レベルに依存しない。
-  function findOnsetOffset(buffer, thresholdPct, searchSamples){
+  function findOnsetOffset(buffer, thresholdPct, searchSamples, center){
     const n = buffer.length;
     const data = buffer.getChannelData(0);
     let peak = 0;
@@ -782,9 +802,10 @@
     if (peak <= 0) return null;
     const th = peak * (thresholdPct / 100);
     const limit = Math.min(searchSamples, Math.floor(n/2));
+    const c = center || 0;
     for (let d=0; d<=limit; d++){
-      if (Math.abs(data[mod(d, n)]) >= th) return d;
-      if (d > 0 && Math.abs(data[mod(-d, n)]) >= th) return -d;
+      if (Math.abs(data[mod(c + d, n)]) >= th) return d;
+      if (d > 0 && Math.abs(data[mod(c - d, n)]) >= th) return -d;
     }
     return null;
   }
@@ -806,6 +827,11 @@
     if (numSamples <= 0) return null;
     const numChannels = Math.max(1, captureChannels);
     const out = audioCtx.createBuffer(numChannels, numSamples, audioCtx.sampleRate);
+    // getChannelData はループの外で1度だけ取得する。
+    // チャンクごとに呼ぶと数千回の呼び出しになり、8秒のループで約900msかかって
+    // 1周目の再生開始が間に合わなくなっていた。
+    const dst = [];
+    for (let ch=0; ch<numChannels; ch++) dst.push(out.getChannelData(ch));
     let filled = 0;
     for (const { frame, chans } of captureChunks){
       const len = chans[0].length;
@@ -817,7 +843,7 @@
       const dstOff = from - startFrame;
       for (let ch=0; ch<numChannels; ch++){
         const src = chans[Math.min(ch, chans.length-1)];
-        out.getChannelData(ch).set(src.subarray(srcOff, srcOff+count), dstOff);
+        dst[ch].set(src.subarray(srcOff, srcOff+count), dstOff);
       }
       filled += count;
     }
@@ -936,7 +962,7 @@
     for (let i = 0; i < total; i++){
       const angle = (i / total) * 2 * Math.PI;
       const isBarStart = i % 4 === 0;
-      const rOuter = 46, rInner = isBarStart ? 40 : 42.5;
+      const rOuter = 46, rInner = isBarStart ? 43 : 44.5;
       const x1 = 50 + rOuter * Math.cos(angle), y1 = 50 + rOuter * Math.sin(angle);
       const x2 = 50 + rInner * Math.cos(angle), y2 = 50 + rInner * Math.sin(angle);
       const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
@@ -947,12 +973,20 @@
     }
   }
 
+  // 内側の輪が回り切る単位。バー選択の最大値(8小節)に合わせる
+  const MAX_BARS = 8;
+
   function updateDialProgress(){
     const t = getSelected();
     const total = t.bars * PULSES_PER_BAR;
     const pos = pulseCount % total;
     const frac = total ? pos / total : 0;
     els.dialProgress.setAttribute('stroke-dashoffset', String(100 - frac * 100));
+
+    // 外周の輪: 最大小節数のうち今どこにいるかを示す
+    const overallTotal = MAX_BARS * PULSES_PER_BAR;
+    const overallFrac = (mod(pulseCount, overallTotal)) / overallTotal;
+    els.dialOverall.setAttribute('stroke-dashoffset', String(100 - overallFrac * 100));
     els.dialProgress.classList.remove('rec','play','armed');
     if (t.state === 'recording') els.dialProgress.classList.add('rec');
     else if (t.state === 'playing') els.dialProgress.classList.add('play');
@@ -1256,7 +1290,8 @@
     for (const t of tracks){
       if (t.state === 'rec-armed'){
         if (isRecStartBoundary(t, barBoundary)) startRecording(t);
-      } else if (t.state === 'recording' && pulseCount >= t.recordTargetPulse){
+      } else if (t.state === 'recording' && audioCtx.currentTime >= t.recPlayTime - PLAY_LEAD_SEC){
+        // 締切より前倒しで組み立てる。必要な音は既にキャプチャ済み(ガードぶんの余裕)
         stopRecordingAndPlay(t);
       } else if (t.state === 'play-armed' && barBoundary){
         startPlayback(t);
@@ -1307,48 +1342,63 @@
     t.recLatencySamples = Math.round(latencyOffsetMs / 1000 * sr);
     // ループ長はチャンク数ではなくテンポから決める(これをしないと周回ごとにずれる)
     t.recTargetSamples = Math.round(t.bars * PULSES_PER_BAR * secondsPerPulse() * sr);
+    // ループ再生を始めるべき正確なオーディオクロック時刻。
+    // src.start() に渡してオーディオスレッド側で開始させる(メインスレッドの
+    // 到着ジッタやバッファ組み立て時間の影響を受けないようにするため)
+    t.recPlayTime = (t.recStartFrame + CAPTURE_GUARD_SAMPLES + t.recTargetSamples) / sr;
     activeRecStartFrame = t.recStartFrame;
     t.state = 'recording';
-    t.recordTargetPulse = pulseCount + t.bars * PULSES_PER_BAR;
+    // 組み立てはクロックパルス任せにせず専用タイマーで予約する。
+    // パルス処理が詰まると判定もその分遅れ、1周目の再生が間に合わなくなるため。
+    // (パルス側の判定も保険として残してある)
+    if (t.recPrepTimer) clearTimeout(t.recPrepTimer);
+    const leadMs = (t.recPlayTime - PLAY_LEAD_SEC - audioCtx.currentTime) * 1000;
+    t.recPrepTimer = setTimeout(() => {
+      t.recPrepTimer = null;
+      if (t.state === 'recording') stopRecordingAndPlay(t);
+    }, Math.max(0, leadMs));
     updateTransportUI(); renderTrackList(); updateStatusLine(t);
     if (t.id === selectedId) startTimer();
   }
 
   function stopRecordingAndPlay(t){
+    if (t.state !== 'recording') return;   // タイマーとパルス判定の二重発火を防ぐ
+    if (t.recPrepTimer){ clearTimeout(t.recPrepTimer); t.recPrepTimer = null; }
     if (t.id === selectedId) freezeTimer();
-    let buffer = sliceCapture(t.recStartFrame, t.recTargetSamples);
+    const raw = sliceCapture(t.recStartFrame, t.recTargetSamples);
     recordingTrackId = null;
-    if (buffer){
-      // ガードぶんを戻し、さらにレイテンシ補正ぶん前へ詰める
-      buffer = rotateBufferLeft(buffer, CAPTURE_GUARD_SAMPLES + t.recLatencySamples);
-    }
-    if (!buffer){
+    if (!raw){
       t.state = 'empty';
       updateTransportUI(); renderTrackList();
       if (t.id === selectedId){ els.stateLine.textContent = '録音データがありませんでした。入力レベルを確認してください。'; els.lcdTag.textContent = 'READY'; }
       return;
     }
 
-    // オートアジャスト: しきい値を超えた最初の音が小節頭に来るよう回転させる。
-    // 探索範囲は前後半拍まで(それ以上ずれている場合は別の拍を掴む危険があるため)
+    // ガードぶんを戻し、さらにレイテンシ補正ぶん前へ詰める位置
+    let rotation = CAPTURE_GUARD_SAMPLES + t.recLatencySamples;
+
+    // オートアジャスト: しきい値を超えた最初の音が小節頭に来るよう回転量を足す。
+    // 探索範囲は前後半拍まで(それ以上ずれていると別の拍を掴む危険があるため)。
+    // 回転前のバッファ上で探すので、コピーは最後の1回だけで済む。
     let adjustMs = null;
     if (autoAdjustEnabled){
-      const halfBeat = Math.round(buffer.length / (t.bars * 4) / 2);
-      const onset = findOnsetOffset(buffer, autoAdjustThresholdPct, halfBeat);
+      const halfBeat = Math.round(raw.length / (t.bars * 4) / 2);
+      const onset = findOnsetOffset(raw, autoAdjustThresholdPct, halfBeat, rotation);
       if (onset !== null && onset !== 0){
-        buffer = rotateBufferLeft(buffer, onset);
-        adjustMs = Math.round(onset / buffer.sampleRate * 1000);
+        rotation += onset;
+        adjustMs = Math.round(onset / raw.sampleRate * 1000);
         console.log('[SYNC LOOPER] Auto adjust: shifted', adjustMs, 'ms to align onset to bar head');
       } else {
         console.log('[SYNC LOOPER] Auto adjust: no onset found within half a beat, left as is');
       }
     }
 
+    const buffer = rotateBufferLeft(raw, rotation);
     t.buffer = buffer;
     t.originalBuffer = buffer;
     t.reversed = false;
     t.fx.reverse = false;
-    startPlayback(t);
+    startPlayback(t, t.recPlayTime);
     renderTrackList();
     if (t.id === selectedId){
       renderTimeline(); renderEffectsGrid();
@@ -1358,16 +1408,28 @@
     }
   }
 
-  function startPlayback(t){
+  // when を渡すとその時刻ちょうどに再生を開始する(オーディオスレッド側で正確に発火)。
+  // 省略時は即時開始。
+  function startPlayback(t, when){
     if (!t.buffer || !t.fxChain) return;
     if (t.source){ try{ t.source.stop(); }catch(e){} }
     const src = audioCtx.createBufferSource();
     src.buffer = t.buffer;
     src.loop = true;
     src.connect(t.fxChain.input);
-    src.start();
+    const now = audioCtx.currentTime;
+    let startAt = now;
+    if (typeof when === 'number'){
+      if (when > now){
+        startAt = when;
+        console.log('[SYNC LOOPER] Loop scheduled', ((when - now)*1000).toFixed(1), 'ms ahead');
+      } else {
+        console.log('[SYNC LOOPER] Loop start missed deadline by', ((now - when)*1000).toFixed(1), 'ms — starting now');
+      }
+    }
+    src.start(startAt);
     t.source = src;
-    t.playStartTime = audioCtx.currentTime;
+    t.playStartTime = startAt;
     t.loopStartPulse = pulseCount;
     t.state = 'playing';
     updateTransportUI(); renderTrackList(); updateStatusLine(t);
@@ -1445,6 +1507,7 @@
     if (t.source){ try{ t.source.stop(); }catch(e){} t.source = null; }
     // 録音中のトラックを消したら録音も打ち切る
     if (recordingTrackId === t.id) recordingTrackId = null;
+    if (t.recPrepTimer){ clearTimeout(t.recPrepTimer); t.recPrepTimer = null; }
     t.buffer = null; t.originalBuffer = null; t.reversed = false; t.fx.reverse = false;
     t.recAlignRefId = null;
     t.state = 'empty';
@@ -1456,6 +1519,7 @@
   function panicStopAll(){
     tracks.forEach(tr => {
       if (tr.source){ try{ tr.source.stop(); }catch(e){} tr.source = null; }
+      if (tr.recPrepTimer){ clearTimeout(tr.recPrepTimer); tr.recPrepTimer = null; }
       if (tr.state === 'recording' || tr.state === 'playing' || ARMED_STATES.includes(tr.state)){
         tr.state = tr.buffer ? 'stopped' : 'empty';
       }
@@ -1503,12 +1567,12 @@
   els.btnStop.addEventListener('click', () => onControlActivate('transport:stop', triggerStop));
   els.btnClear.addEventListener('click', () => onControlActivate('transport:clear', triggerClear));
   els.btnResetBar.addEventListener('click', () => {
-    // pulseCountだけ0に戻すと、進行中の録音の終了位置や再生ループの基準が取り残されて
-    // 録音が延々と続いてしまうため、各トラックの基準パルスも同じ量だけずらす
+    // pulseCountだけ0に戻すと再生ループや録音整列の基準が取り残されるため、
+    // 各トラックの基準パルスも同じ量だけずらす
+    // (録音の終了時刻は recPlayTime = オーディオクロック基準なので影響を受けない)
     const delta = pulseCount;
     pulseCount = 0;
     tracks.forEach(t => {
-      t.recordTargetPulse -= delta;
       t.loopStartPulse -= delta;
       t.recAlignRefStart -= delta;
     });
@@ -1875,7 +1939,7 @@
     const data = t.buffer.getChannelData(0);
     const step = Math.ceil(data.length/cw);
     const mid = ch/2;
-    ctx2d.fillStyle = '#8a8271';
+    ctx2d.fillStyle = '#5d625f';
     for (let x=0; x<cw; x++){
       let min=1, max=-1;
       const start = x*step;
@@ -1890,7 +1954,7 @@
       const y1 = mid + min*mid*0.85, y2 = mid + max*mid*0.85;
       ctx2d.fillRect(x, Math.min(y1,y2), 1, Math.max(1, Math.abs(y2-y1)));
     }
-    ctx2d.strokeStyle = '#c1b9a6';
+    ctx2d.strokeStyle = '#a0a49f';
     ctx2d.lineWidth = 1;
     const displayedBpm = syncMode === 'standalone' ? standaloneBpm : parseFloat(els.bpmNum.textContent || 120);
     const barDur = (60/displayedBpm)*4;
@@ -1904,6 +1968,15 @@
   }
 
   function playheadLoop(){
+    // 締切チェックの3系統目(専用タイマー・クロックパルスが詰まった場合の保険)。
+    // どれか1つでも間に合えば1周目の再生開始は正確な時刻に予約される。
+    if (audioCtx){
+      for (const tr of tracks){
+        if (tr.state === 'recording' && audioCtx.currentTime >= tr.recPlayTime - PLAY_LEAD_SEC){
+          stopRecordingAndPlay(tr);
+        }
+      }
+    }
     const t = getSelected();
     if (t.buffer && t.state === 'playing' && audioCtx){
       const dur = t.buffer.duration;
