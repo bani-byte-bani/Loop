@@ -198,8 +198,10 @@
   @keyframes blinkbg3{ 50%{ background:linear-gradient(180deg,#f7ecd8,#f0dcb0); } }
   #btnClear .deck-glyph line{ stroke:var(--ink); }
 
-  .reset-row{ text-align:center; margin-top:12px; }
+  .reset-row{ text-align:center; margin-top:12px; display:flex; flex-direction:column; align-items:center; gap:8px; }
   .reset-row button{ background:none; border:none; cursor:pointer; font-family:'JetBrains Mono', monospace; font-size:10px; color:var(--ink-dim); text-decoration:underline; }
+  .latency-cal{ font-family:'JetBrains Mono', monospace; font-size:9px; letter-spacing:0.06em; color:var(--ink-dim); display:inline-flex; align-items:center; gap:5px; }
+  .latency-cal input{ width:54px; padding:3px 5px; text-align:center; font-family:'JetBrains Mono', monospace; font-size:10px; border:1px solid var(--line); border-radius:5px; background:#f7f4ec; color:var(--ink); }
 
   /* track select */
   .track-row{ display:flex; align-items:center; gap:12px; padding:12px 4px; border-bottom:1px solid var(--line); cursor:pointer; }
@@ -344,7 +346,12 @@
           <button class="deck-btn" id="btnStop" disabled title="STOP"><span class="deck-glyph"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14"></rect></svg></span><span class="deck-label">STOP</span></button>
           <button class="deck-btn" id="btnClear" disabled title="CLEAR"><span class="deck-glyph"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round"><line x1="5" y1="5" x2="19" y2="19"></line><line x1="19" y1="5" x2="5" y2="19"></line></svg></span><span class="deck-label">CLEAR</span></button>
         </div>
-        <div class="reset-row"><button id="btnResetBar">小節頭を今にリセット(手動同期)</button></div>
+        <div class="reset-row">
+          <button id="btnResetBar">小節頭を今にリセット(手動同期)</button>
+          <label class="latency-cal" title="録音した音が遅れて聞こえる場合は数値を大きくしてください">
+            録音補正 <input type="number" id="latencyInput" min="0" max="500" step="5" value="0"> ms
+          </label>
+        </div>
       </div>
 
       <div class="card synced-card" id="trackPanelCard">
@@ -411,7 +418,7 @@
 
 <script>
 (() => {
-  const APP_VERSION = 'v7';
+  const APP_VERSION = 'v8';
   console.log('[SYNC LOOPER] Script init start. Version:', APP_VERSION);
   window.addEventListener('error', (e) => {
     console.error('[SYNC LOOPER] window error event:', e.message, e.error);
@@ -454,6 +461,7 @@
     btnStop: document.getElementById('btnStop'),
     btnClear: document.getElementById('btnClear'),
     btnResetBar: document.getElementById('btnResetBar'),
+    latencyInput: document.getElementById('latencyInput'),
     btnPanic: document.getElementById('btnPanic'),
     btnFullscreen: document.getElementById('btnFullscreen'),
     footerLine: document.getElementById('footerLine'),
@@ -492,7 +500,6 @@
   let clockTimestamps = [];
   let pulseCount = 0;
   let running = false;
-  let recordedChunks = [];
 
   // ---------- sync mode / standalone internal clock ----------
   let syncMode = 'external'; // 'external' | 'standalone'
@@ -610,6 +617,7 @@
   const tracks = ['A','B','C','D'].map(id => ({
     id, bars:4, buffer:null, originalBuffer:null, reversed:false,
     source:null, state:'empty', recordTargetPulse:0, playStartTime:0,
+    recStartFrame:0, recTargetSamples:0,
     loopStartPulse:0, recAlignRefId:null, recAlignRefLen:0, recAlignRefStart:0,
     fx:{ reverb:false, delay:false, filter:false, reverse:false, tape:false },
     fxPending:{ reverb:null, delay:null, filter:null, reverse:null, tape:null },
@@ -619,9 +627,86 @@
   let selectedId = 'A';
   const getSelected = () => tracks.find(t => t.id === selectedId);
 
-  // 録音バッファ(recordedChunks)は全トラック共有のため、録音は同時に1トラックのみ。
-  // ワークレットからの取り込み先判定にもこのIDを使う。
+  // 録音バッファは全トラック共有のため、録音は同時に1トラックのみ。
   let recordingTrackId = null;
+
+  // ---------- 連続キャプチャ(録音区間をサンプル単位で切り出すため) ----------
+  // 以前は「メインスレッドに届いたチャンクの個数」でループ長が決まっていたため、
+  // 実測で -41ms〜+4ms のバラつきが出て、周回のたびに小節頭がずれていった。
+  // 常時キャプチャしておき、フレーム番号を使って音楽的に正確な長さで切り出す。
+  let captureChunks = [];        // { frame, chans:[Float32Array,...] }
+  let captureChannels = 0;
+  let activeRecStartFrame = 0;
+  const PRE_ROLL_SEC = 1.0;      // レイテンシ補正で過去に遡れる余裕
+
+  // 入力レイテンシ補正(ms)。機材ごとに異なるので調整可能にして保存する
+  let latencyOffsetMs = 0;
+
+  function loadLatencyOffset(){
+    const raw = localStorage.getItem('syncLooperLatencyMs');
+    if (raw !== null){
+      const v = parseFloat(raw);
+      if (isFinite(v)) latencyOffsetMs = v;
+    }
+    els.latencyInput.value = latencyOffsetMs;
+  }
+  function setLatencyOffset(ms){
+    // 負値(=未来へずらす)は末尾が未キャプチャになり無音が入るため受け付けない。
+    // 入力レイテンシは必ず「録音が遅れる」方向なので0以上で足りる。
+    latencyOffsetMs = Math.min(500, Math.max(0, isFinite(ms) ? ms : 0));
+    els.latencyInput.value = latencyOffsetMs;
+    try{ localStorage.setItem('syncLooperLatencyMs', String(latencyOffsetMs)); }
+    catch(e){ console.error('[SYNC LOOPER] Failed to save latency offset', e); }
+    console.log('[SYNC LOOPER] Latency offset set to', latencyOffsetMs, 'ms');
+  }
+  // 保存値が無ければ実機の入力/出力レイテンシから初期値を推定する
+  function estimateLatencyOffset(){
+    if (localStorage.getItem('syncLooperLatencyMs') !== null) return;
+    let seconds = audioCtx.baseLatency || 0;
+    const track = micStream && micStream.getAudioTracks()[0];
+    const settings = track && track.getSettings ? track.getSettings() : null;
+    if (settings && isFinite(settings.latency)) seconds += settings.latency;
+    const ms = Math.round(seconds * 1000 / 5) * 5;
+    console.log('[SYNC LOOPER] Estimated input latency:', ms, 'ms (baseLatency + track latency)');
+    setLatencyOffset(ms);
+  }
+  els.latencyInput.addEventListener('change', () => setLatencyOffset(parseFloat(els.latencyInput.value)));
+  loadLatencyOffset();
+
+  // 1パルスあたりの秒数。スタンドアロンは設定値、外部クロックは実測の平均から求める
+  function secondsPerPulse(){
+    if (syncMode === 'standalone') return 60 / standaloneBpm / PPQ;
+    if (clockTimestamps.length >= 2){
+      let sum = 0;
+      for (let i=1;i<clockTimestamps.length;i++) sum += clockTimestamps[i]-clockTimestamps[i-1];
+      return (sum / (clockTimestamps.length-1)) / 1000;
+    }
+    return 60 / 120 / PPQ;
+  }
+
+  // captureChunks から [startFrame, startFrame+numSamples) をサンプル単位で取り出す。
+  // 未キャプチャの領域は無音のまま残る(createBufferは0で初期化される)。
+  function sliceCapture(startFrame, numSamples){
+    if (numSamples <= 0) return null;
+    const numChannels = Math.max(1, captureChannels);
+    const out = audioCtx.createBuffer(numChannels, numSamples, audioCtx.sampleRate);
+    let filled = 0;
+    for (const { frame, chans } of captureChunks){
+      const len = chans[0].length;
+      const from = Math.max(startFrame, frame);
+      const to = Math.min(startFrame + numSamples, frame + len);
+      if (to <= from) continue;
+      const count = to - from;
+      const srcOff = from - frame;
+      const dstOff = from - startFrame;
+      for (let ch=0; ch<numChannels; ch++){
+        const src = chans[Math.min(ch, chans.length-1)];
+        out.getChannelData(ch).set(src.subarray(srcOff, srcOff+count), dstOff);
+      }
+      filled += count;
+    }
+    return filled > 0 ? out : null;
+  }
 
   // トラック状態 → 表示文言を一元管理(各所に散らばっていた同じ文言の重複を排除)
   function describeTrackState(t){
@@ -829,6 +914,7 @@
       await connect();
       els.setupPanel.classList.add('hidden');
       els.performPanel.classList.remove('hidden');
+      estimateLatencyOffset();
       requestWakeLock();
       updateBpmModeUI();
       if (syncMode === 'standalone'){
@@ -923,12 +1009,15 @@
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     sourceNode = audioCtx.createMediaStreamSource(micStream);
 
+    // currentFrame(オーディオスレッド上のサンプル位置)を一緒に送る。
+    // これがあれば、メインスレッドにいつメッセージが届いたかに関係なく
+    // 録音区間をサンプル単位で正確に切り出せる。
     const workletCode = `
       class RecorderProcessor extends AudioWorkletProcessor {
         process(inputs){
           const input = inputs[0];
           if (input && input.length > 0 && input[0].length > 0){
-            this.port.postMessage(input.map(ch => ch.slice()));
+            this.port.postMessage({ frame: currentFrame, chans: input.map(ch => ch.slice()) });
           }
           return true;
         }
@@ -940,9 +1029,16 @@
     URL.revokeObjectURL(blobUrl);
     workletNode = new AudioWorkletNode(audioCtx, 'recorder-processor');
     workletNode.port.onmessage = (e) => {
-      // 「選択中トラック」ではなく「録音中トラック」を基準にする。
-      // (録音中に別トラックを選ぶと取り込みが止まり、ループが尻切れになっていた)
-      if (recordingTrackId !== null) recordedChunks.push(e.data);
+      const { frame, chans } = e.data;
+      captureChannels = chans.length;
+      captureChunks.push({ frame, chans });
+      // 録音中は開始位置より前だけ、非録音中はプリロール分だけ残して捨てる
+      const keepFrom = (recordingTrackId !== null)
+        ? activeRecStartFrame
+        : frame - PRE_ROLL_SEC * audioCtx.sampleRate;
+      while (captureChunks.length && captureChunks[0].frame + captureChunks[0].chans[0].length <= keepFrom){
+        captureChunks.shift();
+      }
     };
     sourceNode.connect(workletNode);
 
@@ -1071,8 +1167,13 @@
 
   // ---------- recording / playback per track ----------
   function startRecording(t){
-    recordedChunks = [];
     recordingTrackId = t.id;
+    const sr = audioCtx.sampleRate;
+    // 小節頭を認識した時点の再生クロック位置。入力レイテンシぶん手前から切り出す
+    t.recStartFrame = Math.round(audioCtx.currentTime * sr) - Math.round(latencyOffsetMs / 1000 * sr);
+    // ループ長はチャンク数ではなくテンポから決める(これをしないと周回ごとにずれる)
+    t.recTargetSamples = Math.round(t.bars * PULSES_PER_BAR * secondsPerPulse() * sr);
+    activeRecStartFrame = t.recStartFrame;
     t.state = 'recording';
     t.recordTargetPulse = pulseCount + t.bars * PULSES_PER_BAR;
     updateTransportUI(); renderTrackList(); updateStatusLine(t);
@@ -1081,24 +1182,13 @@
 
   function stopRecordingAndPlay(t){
     if (t.id === selectedId) freezeTimer();
-    const chunks = recordedChunks;
-    recordedChunks = [];
+    const buffer = sliceCapture(t.recStartFrame, t.recTargetSamples);
     recordingTrackId = null;
-    const numChannels = chunks.length ? chunks[0].length : 0;
-    const totalLength = chunks.reduce((sum,c) => sum + c[0].length, 0);
-    // 長さ0でcreateBufferを呼ぶと例外になるため、チャンク数だけでなく実サンプル数も確認する
-    if (!numChannels || !totalLength){
+    if (!buffer){
       t.state = 'empty';
       updateTransportUI(); renderTrackList();
       if (t.id === selectedId){ els.stateLine.textContent = '録音データがありませんでした。入力レベルを確認してください。'; els.lcdTag.textContent = 'READY'; }
       return;
-    }
-    const sampleRate = audioCtx.sampleRate;
-    const buffer = audioCtx.createBuffer(numChannels, totalLength, sampleRate);
-    for (let ch=0; ch<numChannels; ch++){
-      const data = buffer.getChannelData(ch);
-      let offset = 0;
-      for (const c of chunks){ data.set(c[ch], offset); offset += c[ch].length; }
     }
     t.buffer = buffer;
     t.originalBuffer = buffer;
@@ -1194,8 +1284,8 @@
     if (targetId && targetId !== selectedId) selectTrack(targetId);
     const t = getSelected();
     if (t.source){ try{ t.source.stop(); }catch(e){} t.source = null; }
-    // 録音中のトラックを消したら取り込みも止める(放置すると無音チャンクが溜まり続ける)
-    if (recordingTrackId === t.id){ recordingTrackId = null; recordedChunks = []; }
+    // 録音中のトラックを消したら録音も打ち切る
+    if (recordingTrackId === t.id) recordingTrackId = null;
     t.buffer = null; t.originalBuffer = null; t.reversed = false; t.fx.reverse = false;
     t.recAlignRefId = null;
     t.state = 'empty';
@@ -1213,7 +1303,6 @@
       tr.recAlignRefId = null;
       FX_NAMES.forEach(name => { tr.fxPending[name] = null; });
     });
-    recordedChunks = [];
     recordingTrackId = null;
     freezeTimer();
     updateTransportUI(); renderTrackList(); renderEffectsGrid(); renderTimeline();
