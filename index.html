@@ -127,8 +127,28 @@
   .error{ color:var(--red); font-size:11px; margin-top:10px; font-family:'JetBrains Mono', monospace; }
 
   /* main grid */
-  .main-grid{ display:grid; grid-template-columns:1fr; gap:16px; }
+  #performPanel{ display:flex; flex-direction:column; gap:16px; }
+  .main-grid{ display:grid; grid-template-columns:1fr; gap:16px; align-items:start; }
+  .lower-grid{ display:grid; grid-template-columns:1fr; gap:16px; align-items:start; }
   @media (min-width:720px){ .main-grid{ grid-template-columns:1.15fr 1fr; } }
+
+  /* ワイド画面: コンソールを広げ、下段の2カードを横並びにして
+     スクロールせずに全体が見えるようにする */
+  @media (min-width:1200px){
+    .console{ max-width:1240px; }
+    .lower-grid{ grid-template-columns:1fr 1fr; }
+    /* 画面が広い分ダイヤルを大きくし、離れた位置からも読めるようにする */
+    .dial-wrap{ width:260px; height:260px; }
+    .dial-bpm{ font-size:36px; }
+    /* ボタンが間延びしないよう横幅を制限しつつ中央に寄せる */
+    .transport{ max-width:560px; margin:0 auto; }
+  }
+  @media (min-width:1600px){
+    .console{ max-width:1480px; }
+    .main-grid{ grid-template-columns:1.2fr 1fr; }
+    .dial-wrap{ width:300px; height:300px; }
+    .dial-bpm{ font-size:42px; }
+  }
 
   .card{ background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px; }
   .card h2{ margin:0 0 12px; font-family:'JetBrains Mono', monospace; font-size:10px; letter-spacing:0.16em; color:var(--ink-dim); text-transform:uppercase; }
@@ -200,8 +220,10 @@
 
   .reset-row{ text-align:center; margin-top:12px; display:flex; flex-direction:column; align-items:center; gap:8px; }
   .reset-row button{ background:none; border:none; cursor:pointer; font-family:'JetBrains Mono', monospace; font-size:10px; color:var(--ink-dim); text-decoration:underline; }
-  .latency-cal{ font-family:'JetBrains Mono', monospace; font-size:9px; letter-spacing:0.06em; color:var(--ink-dim); display:inline-flex; align-items:center; gap:5px; }
-  .latency-cal input{ width:54px; padding:3px 5px; text-align:center; font-family:'JetBrains Mono', monospace; font-size:10px; border:1px solid var(--line); border-radius:5px; background:#f7f4ec; color:var(--ink); }
+  .cal-row{ display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:6px 14px; }
+  .latency-cal{ font-family:'JetBrains Mono', monospace; font-size:9px; letter-spacing:0.06em; color:var(--ink-dim); display:inline-flex; align-items:center; gap:5px; cursor:pointer; }
+  .latency-cal input[type="number"]{ width:54px; padding:3px 5px; text-align:center; font-family:'JetBrains Mono', monospace; font-size:10px; border:1px solid var(--line); border-radius:5px; background:#f7f4ec; color:var(--ink); }
+  .latency-cal input[type="checkbox"]{ width:13px; height:13px; accent-color:var(--amber); cursor:pointer; margin:0; }
 
   /* track select */
   .track-row{ display:flex; align-items:center; gap:12px; padding:12px 4px; border-bottom:1px solid var(--line); cursor:pointer; }
@@ -364,9 +386,17 @@
         </div>
         <div class="reset-row">
           <button id="btnResetBar">小節頭を今にリセット(手動同期)</button>
-          <label class="latency-cal" title="録音した音が遅れて聞こえる場合は数値を大きくしてください">
-            録音補正 <input type="number" id="latencyInput" min="0" max="500" step="5" value="0"> ms
-          </label>
+          <div class="cal-row">
+            <label class="latency-cal" title="録音した音が遅れて聞こえる場合は数値を大きくしてください">
+              録音補正 <input type="number" id="latencyInput" min="0" max="500" step="5" value="0"> ms
+            </label>
+            <label class="latency-cal" title="録音後、しきい値を超えた最初の音が小節頭に来るよう自動でずらします">
+              <input type="checkbox" id="autoAdjustToggle"> オートアジャスト
+            </label>
+            <label class="latency-cal" title="ループ内のピーク音量に対する割合。小さいほど弱い音にも反応します">
+              しきい値 <input type="number" id="autoAdjustThreshold" min="5" max="90" step="5" value="20"> %
+            </label>
+          </div>
         </div>
       </div>
 
@@ -382,7 +412,6 @@
       </div>
     </div>
 
-    <div style="height:16px;"></div>
     <div class="card synced-card" id="fxCard">
       <h2>Effects — <span id="fxTrackLabel">TRACK A</span></h2>
       <div class="effects-grid" id="effectsGrid">
@@ -410,21 +439,21 @@
       <div class="fx-caption">エフェクトは選択中トラックに個別にかかります</div>
     </div>
 
-    <div style="height:16px;"></div>
-    <div class="card">
-      <h2>MIDI Mappings</h2>
-      <div id="mappingsList"></div>
-      <div style="height:10px;"></div>
-      <button class="btn-slab" id="btnClearMappings">すべてのマッピングを解除</button>
-    </div>
+    <div class="lower-grid">
+      <div class="card">
+        <h2>MIDI Mappings</h2>
+        <div id="mappingsList"></div>
+        <div style="height:10px;"></div>
+        <button class="btn-slab" id="btnClearMappings">すべてのマッピングを解除</button>
+      </div>
 
-    <div style="height:16px;"></div>
-    <details class="card collapsible" id="keyMappingsCard">
-      <summary>Keyboard Mappings</summary>
-      <div id="keyMappingsList"></div>
-      <div style="height:10px;"></div>
-      <button class="btn-slab" id="btnResetKeyMappings">デフォルト配列に戻す</button>
-    </details>
+      <details class="card collapsible" id="keyMappingsCard">
+        <summary>Keyboard Mappings</summary>
+        <div id="keyMappingsList"></div>
+        <div style="height:10px;"></div>
+        <button class="btn-slab" id="btnResetKeyMappings">デフォルト配列に戻す</button>
+      </details>
+    </div>
   </div>
 
 </div>
@@ -435,10 +464,10 @@
 
 <script>
 (() => {
-  const APP_VERSION = 'v10';
+  const APP_VERSION = 'v11';
   // デプロイのたびに APP_VERSION / sw.js の CACHE_NAME と一緒に更新する。
   // UTCで持ち、表示時に閲覧者のローカル時刻へ変換する(時差の誤解を避けるため)
-  const APP_BUILT_AT = '2026-08-07T17:04:00Z';
+  const APP_BUILT_AT = '2026-08-07T17:38:00Z';
   console.log('[SYNC LOOPER] Script init start. Version:', APP_VERSION);
   window.addEventListener('error', (e) => {
     console.error('[SYNC LOOPER] window error event:', e.message, e.error);
@@ -482,6 +511,8 @@
     btnClear: document.getElementById('btnClear'),
     btnResetBar: document.getElementById('btnResetBar'),
     latencyInput: document.getElementById('latencyInput'),
+    autoAdjustToggle: document.getElementById('autoAdjustToggle'),
+    autoAdjustThreshold: document.getElementById('autoAdjustThreshold'),
     btnPanic: document.getElementById('btnPanic'),
     btnFullscreen: document.getElementById('btnFullscreen'),
     footerLine: document.getElementById('footerLine'),
@@ -708,6 +739,55 @@
   }
   els.latencyInput.addEventListener('change', () => setLatencyOffset(parseFloat(els.latencyInput.value)));
   loadLatencyOffset();
+
+  // ---------- オートアジャスト(しきい値を超えた最初の音を小節頭に合わせる) ----------
+  let autoAdjustEnabled = false;
+  let autoAdjustThresholdPct = 20;
+
+  function loadAutoAdjust(){
+    autoAdjustEnabled = localStorage.getItem('syncLooperAutoAdjust') === '1';
+    const raw = parseFloat(localStorage.getItem('syncLooperAutoAdjustPct'));
+    if (isFinite(raw)) autoAdjustThresholdPct = Math.min(90, Math.max(5, raw));
+    els.autoAdjustToggle.checked = autoAdjustEnabled;
+    els.autoAdjustThreshold.value = autoAdjustThresholdPct;
+  }
+  function saveAutoAdjust(){
+    try{
+      localStorage.setItem('syncLooperAutoAdjust', autoAdjustEnabled ? '1' : '0');
+      localStorage.setItem('syncLooperAutoAdjustPct', String(autoAdjustThresholdPct));
+    } catch(e){ console.error('[SYNC LOOPER] Failed to save auto adjust settings', e); }
+  }
+  els.autoAdjustToggle.addEventListener('change', () => {
+    autoAdjustEnabled = els.autoAdjustToggle.checked;
+    saveAutoAdjust();
+    console.log('[SYNC LOOPER] Auto adjust:', autoAdjustEnabled);
+  });
+  els.autoAdjustThreshold.addEventListener('change', () => {
+    const v = parseFloat(els.autoAdjustThreshold.value);
+    autoAdjustThresholdPct = Math.min(90, Math.max(5, isFinite(v) ? v : 20));
+    els.autoAdjustThreshold.value = autoAdjustThresholdPct;
+    saveAutoAdjust();
+    console.log('[SYNC LOOPER] Auto adjust threshold:', autoAdjustThresholdPct, '%');
+  });
+  loadAutoAdjust();
+
+  // 位置0に最も近い「しきい値を超える点」を探し、0からのサンプル差を返す。
+  // 前(末尾に回り込んでいる場合)も探すため戻り値は負にもなる。見つからなければ null。
+  // しきい値はループ内のピークに対する相対値なので、入力レベルに依存しない。
+  function findOnsetOffset(buffer, thresholdPct, searchSamples){
+    const n = buffer.length;
+    const data = buffer.getChannelData(0);
+    let peak = 0;
+    for (let i=0;i<n;i++){ const v = Math.abs(data[i]); if (v > peak) peak = v; }
+    if (peak <= 0) return null;
+    const th = peak * (thresholdPct / 100);
+    const limit = Math.min(searchSamples, Math.floor(n/2));
+    for (let d=0; d<=limit; d++){
+      if (Math.abs(data[mod(d, n)]) >= th) return d;
+      if (d > 0 && Math.abs(data[mod(-d, n)]) >= th) return -d;
+    }
+    return null;
+  }
 
   // 1パルスあたりの秒数。スタンドアロンは設定値、外部クロックは実測の平均から求める
   function secondsPerPulse(){
@@ -1248,13 +1328,34 @@
       if (t.id === selectedId){ els.stateLine.textContent = '録音データがありませんでした。入力レベルを確認してください。'; els.lcdTag.textContent = 'READY'; }
       return;
     }
+
+    // オートアジャスト: しきい値を超えた最初の音が小節頭に来るよう回転させる。
+    // 探索範囲は前後半拍まで(それ以上ずれている場合は別の拍を掴む危険があるため)
+    let adjustMs = null;
+    if (autoAdjustEnabled){
+      const halfBeat = Math.round(buffer.length / (t.bars * 4) / 2);
+      const onset = findOnsetOffset(buffer, autoAdjustThresholdPct, halfBeat);
+      if (onset !== null && onset !== 0){
+        buffer = rotateBufferLeft(buffer, onset);
+        adjustMs = Math.round(onset / buffer.sampleRate * 1000);
+        console.log('[SYNC LOOPER] Auto adjust: shifted', adjustMs, 'ms to align onset to bar head');
+      } else {
+        console.log('[SYNC LOOPER] Auto adjust: no onset found within half a beat, left as is');
+      }
+    }
+
     t.buffer = buffer;
     t.originalBuffer = buffer;
     t.reversed = false;
     t.fx.reverse = false;
     startPlayback(t);
     renderTrackList();
-    if (t.id === selectedId){ renderTimeline(); renderEffectsGrid(); }
+    if (t.id === selectedId){
+      renderTimeline(); renderEffectsGrid();
+      if (adjustMs !== null){
+        els.stateLine.textContent = `TRACK ${t.id} ループ再生中(オートアジャスト ${adjustMs > 0 ? '+' : ''}${adjustMs}ms)`;
+      }
+    }
   }
 
   function startPlayback(t){
