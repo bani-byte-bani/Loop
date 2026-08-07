@@ -176,7 +176,26 @@
   .lcd-time{ font-family:'JetBrains Mono', monospace; font-size:18px; color:var(--screen-fg); letter-spacing:0.05em; text-shadow:0 0 8px rgba(111,199,255,0.5); font-variant-numeric:tabular-nums; }
   .lcd-tag{ font-family:'JetBrains Mono', monospace; font-size:9px; color:var(--screen-fg); opacity:0.7; letter-spacing:0.14em; }
 
-  .dial-wrap{ position:relative; width:210px; height:210px; margin:0 auto; }
+  .dial-row{ display:flex; align-items:center; justify-content:center; gap:14px; }
+  .dial-wrap{ position:relative; width:210px; height:210px; }
+  /* 4拍のフラッシュメトロノーム。角型ランプが上から順に光る */
+  .metro{ display:flex; flex-direction:column; gap:8px; flex:none; }
+  .metro-lamp{
+    width:17px; height:17px; border-radius:2px;
+    border:1px solid var(--shell-edge);
+    background:var(--sunk);
+    box-shadow:inset 0 1px 3px rgba(0,0,0,0.4);
+    transition:background .04s linear, box-shadow .04s linear;
+  }
+  .metro-lamp.on{
+    background:linear-gradient(180deg,#e0c78a,#b5892f);
+    box-shadow:0 0 9px rgba(181,137,47,0.85), inset 0 1px 0 rgba(255,255,255,0.45);
+  }
+  /* 1拍目だけ赤く強調する */
+  .metro-lamp.on.accent{
+    background:linear-gradient(180deg,#d97a68,#9c3a2b);
+    box-shadow:0 0 11px rgba(156,58,43,0.9), inset 0 1px 0 rgba(255,255,255,0.4);
+  }
   .dial-svg{ width:100%; height:100%; transform:rotate(-90deg); }
   .dial-face{ fill:var(--sunk); stroke:var(--line); stroke-width:1; }
   .dial-progress{ fill:none; stroke:var(--ink-dim); stroke-width:3; stroke-linecap:round; transition:stroke-dashoffset .05s linear, stroke .2s ease; }
@@ -443,6 +462,7 @@
           <span class="lcd-time" id="lcdTime">0:00:00</span>
           <span class="lcd-tag" id="lcdTag">READY</span>
         </div>
+        <div class="dial-row">
         <div class="dial-wrap">
           <svg class="dial-svg" viewBox="0 0 100 100">
             <circle class="dial-face" cx="50" cy="50" r="46"></circle>
@@ -465,6 +485,13 @@
             <button class="tap-btn hidden" id="btnTap">TAP</button>
             <div class="dial-pos" id="posLabel">BAR – / – ・ BEAT –</div>
           </div>
+        </div>
+        <div class="metro" id="metroLamps" title="4拍のフラッシュメトロノーム">
+          <span class="metro-lamp" data-beat="0"></span>
+          <span class="metro-lamp" data-beat="1"></span>
+          <span class="metro-lamp" data-beat="2"></span>
+          <span class="metro-lamp" data-beat="3"></span>
+        </div>
         </div>
         <div class="bars-row" id="barsSelect">
           <button data-bars="1">1</button>
@@ -581,10 +608,10 @@
 
 <script>
 (() => {
-  const APP_VERSION = 'v15';
+  const APP_VERSION = 'v16';
   // デプロイのたびに APP_VERSION / sw.js の CACHE_NAME と一緒に更新する。
   // UTCで持ち、表示時に閲覧者のローカル時刻へ変換する(時差の誤解を避けるため)
-  const APP_BUILT_AT = '2026-08-07T21:48:00Z';
+  const APP_BUILT_AT = '2026-08-07T22:02:00Z';
   console.log('[SYNC LOOPER] Script init start. Version:', APP_VERSION);
   window.addEventListener('error', (e) => {
     console.error('[SYNC LOOPER] window error event:', e.message, e.error);
@@ -620,6 +647,7 @@
     dialTicks: document.getElementById('dialTicks'),
     dialProgress: document.getElementById('dialProgress'),
     dialOverall: document.getElementById('dialOverall'),
+    metroLamps: document.getElementById('metroLamps'),
     dialTrackLabel: document.getElementById('dialTrackLabel'),
     barsSelect: document.getElementById('barsSelect'),
     stateLine: document.getElementById('stateLine'),
@@ -1525,6 +1553,11 @@
       applyTrackFx(t, 'reverb'); applyTrackFx(t, 'delay'); applyTrackFx(t, 'filter'); applyTrackFx(t, 'tape');
     });
 
+    // カウント音源用。出力にだけ送るのでマイク録音には混ざらない
+    clickGain = audioCtx.createGain();
+    clickGain.gain.value = 1;
+    clickGain.connect(masterGain);
+
     destNode = audioCtx.createMediaStreamDestination();
     masterGain.connect(destNode);
     els.outputEl.srcObject = destNode.stream;
@@ -1569,7 +1602,59 @@
       }
     }
   }
-  function setSyncUI(on){ els.syncLed.classList.toggle('on', on); }
+  function setSyncUI(on){
+    els.syncLed.classList.toggle('on', on);
+    if (!on) clearMetroLamps();
+  }
+
+  // ---------- 4拍のフラッシュメトロノーム ----------
+  const metroLampEls = [...els.metroLamps.querySelectorAll('.metro-lamp')];
+  // 拍の先頭 1/3 だけ点灯させて「フラッシュ」に見せる
+  const METRO_FLASH_RATIO = 1/3;
+
+  function clearMetroLamps(){
+    metroLampEls.forEach(el => el.classList.remove('on','accent'));
+  }
+  function updateMetroLamps(){
+    if (!running){ clearMetroLamps(); return; }
+    const posInBar = mod(pulseCount, PULSES_PER_BAR);
+    const beat = Math.floor(posInBar / PPQ);
+    const lit = (posInBar % PPQ) < PPQ * METRO_FLASH_RATIO;
+    metroLampEls.forEach((el, i) => {
+      const on = lit && i === beat;
+      el.classList.toggle('on', on);
+      el.classList.toggle('accent', on && beat === 0);
+    });
+  }
+
+  // ---------- カウント音源(スタンドアロン・最初の録音が終わるまで) ----------
+  let clickGain = null;
+
+  // まだ1つも録音が無い間だけ鳴らす。ループができたらそれ自体が基準になるので止める
+  function shouldCountIn(){
+    return syncMode === 'standalone' && audioCtx && clickGain && !tracks.some(t => t.buffer);
+  }
+  function playClick(when, accent){
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    osc.type = 'square';
+    osc.frequency.value = accent ? 1600 : 1000;
+    g.gain.setValueAtTime(0.0001, when);
+    g.gain.exponentialRampToValueAtTime(accent ? 0.45 : 0.25, when + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, when + 0.045);
+    osc.connect(g); g.connect(clickGain);
+    osc.start(when);
+    osc.stop(when + 0.06);
+  }
+  // 次のパルスが拍頭なら、その時刻ちょうどに鳴るよう先に予約しておく
+  // (鳴らす瞬間に呼ぶとメインスレッドのジッタがそのまま揺れになるため)
+  function scheduleCountIn(){
+    if (!shouldCountIn()) return;
+    if (mod(pulseCount, PPQ) !== PPQ - 1) return;
+    const nextPulse = pulseCount + 1;
+    const beat = Math.floor(mod(nextPulse, PULSES_PER_BAR) / PPQ);
+    playClick(audioCtx.currentTime + secondsPerPulse(), beat === 0);
+  }
 
   // 録音開始タイミング: 参照トラックがあればその周回頭、なければ通常の小節頭。
   // (UIで「TRACK X の周回頭で開始します」と案内しているのに、実際は最短の小節頭で
@@ -1631,6 +1716,8 @@
         });
       }
     }
+    updateMetroLamps();
+    scheduleCountIn();
     updateDialProgress();
   }
 
