@@ -283,7 +283,8 @@
   #btnClear .deck-glyph line{ stroke:var(--ink); }
 
   /* チューナー */
-  .tuner{ margin-top:var(--gap); display:flex; flex-direction:column; align-items:center; gap:6px; }
+  .tuner{ margin-top:var(--gap); display:flex; flex-direction:column; align-items:center; gap:7px; }
+  .toggle-row{ display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:6px 18px; }
   .tuner-readout{ width:100%; max-width:300px; }
   .tuner-meter{ position:relative; height:10px; background:var(--sunk); border:1px solid var(--line); border-radius:2px; overflow:hidden; }
   .tuner-meter::before{ content:''; position:absolute; left:50%; top:0; bottom:0; width:1px; background:var(--green); opacity:0.9; }
@@ -340,13 +341,16 @@
   .track-body{ flex:1; min-width:0; }
   /* 常に8小節ぶんの固定の物差し。ループの切れ目に縦線を入れて周回が見えるようにする */
   .track-mini-bars{
-    position:relative; display:flex; gap:1px; height:18px; align-items:flex-end; margin-bottom:5px;
+    position:relative; display:flex; gap:0; height:20px; align-items:flex-end; margin-bottom:5px;
+    padding:0 1px;
   }
-  /* ループの切れ目はバーの上に重ねて描く(背面だと波形に隠れて見えないため) */
+  /* ループ1周ごとに枠を描く。小節数がひと目で分かるようにするため。
+     バーの背面だと波形に隠れるので ::after で上に重ねる */
   .track-mini-bars::after{
     content:''; position:absolute; inset:-2px 0; z-index:1; pointer-events:none;
+    border:1px solid rgba(28,31,34,0.45);
     background-image:repeating-linear-gradient(90deg,
-      rgba(28,31,34,0.60) 0 1px, transparent 1px var(--loop-pct, 100%));
+      rgba(28,31,34,0.45) 0 1px, transparent 1px var(--loop-pct, 100%));
   }
   .track-mini-bars span{ flex:1; background:var(--ink-faint); border-radius:1px; min-height:2px; opacity:0.5; }
   .track-mini-bars span.filled{ background:var(--track-color, var(--ink-dim)); opacity:1; }
@@ -524,10 +528,16 @@
           <button class="deck-btn" id="btnClear" disabled title="CLEAR"><span class="deck-glyph"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round"><line x1="5" y1="5" x2="19" y2="19"></line><line x1="19" y1="5" x2="5" y2="19"></line></svg></span><span class="deck-label">CLEAR</span></button>
         </div>
         <div class="tuner" id="tunerPanel">
-          <label class="latency-cal" title="入力の音程を表示します(使用中はごくわずかにCPUを使います)">
-            <span class="sw-group"><span class="sw-mark sw-mark-off">0</span><span class="sw"><input type="checkbox" id="tunerToggle"><span class="sw-track"></span><span class="sw-knob"></span></span><span class="sw-mark sw-mark-on">I</span></span>
-            チューナー
-          </label>
+          <div class="toggle-row">
+            <label class="latency-cal" title="拍ごとにクリック音を鳴らします。最初の録音が終わると自動でオフになります">
+              <span class="sw-group"><span class="sw-mark sw-mark-off">0</span><span class="sw"><input type="checkbox" id="countToggle"><span class="sw-track"></span><span class="sw-knob"></span></span><span class="sw-mark sw-mark-on">I</span></span>
+              カウント
+            </label>
+            <label class="latency-cal" title="入力の音程を表示します(使用中はごくわずかにCPUを使います)">
+              <span class="sw-group"><span class="sw-mark sw-mark-off">0</span><span class="sw"><input type="checkbox" id="tunerToggle"><span class="sw-track"></span><span class="sw-knob"></span></span><span class="sw-mark sw-mark-on">I</span></span>
+              チューナー
+            </label>
+          </div>
           <div class="tuner-readout hidden" id="tunerReadout">
             <div class="tuner-meter"><div class="tuner-needle" id="tunerNeedle"></div></div>
             <div class="tuner-info">
@@ -560,7 +570,7 @@
 
       <div class="side-col">
       <div class="card synced-card" id="trackPanelCard">
-        <h2>Track Select</h2>
+        <h2>TRACKS</h2>
         <div id="trackList"></div>
         <div class="timeline-caption">波形 — <span id="timelineTrackLabel">TRACK A</span></div>
         <div class="timeline-wrap">
@@ -624,10 +634,10 @@
 
 <script>
 (() => {
-  const APP_VERSION = 'v17';
+  const APP_VERSION = 'v18';
   // デプロイのたびに APP_VERSION / sw.js の CACHE_NAME と一緒に更新する。
   // UTCで持ち、表示時に閲覧者のローカル時刻へ変換する(時差の誤解を避けるため)
-  const APP_BUILT_AT = '2026-08-07T22:11:00Z';
+  const APP_BUILT_AT = '2026-08-08T02:41:00Z';
   console.log('[SYNC LOOPER] Script init start. Version:', APP_VERSION);
   window.addEventListener('error', (e) => {
     console.error('[SYNC LOOPER] window error event:', e.message, e.error);
@@ -676,6 +686,7 @@
     playbackInput: document.getElementById('playbackInput'),
     inputChannelSelect: document.getElementById('inputChannelSelect'),
     tunerToggle: document.getElementById('tunerToggle'),
+    countToggle: document.getElementById('countToggle'),
     tunerReadout: document.getElementById('tunerReadout'),
     tunerNeedle: document.getElementById('tunerNeedle'),
     tunerNote: document.getElementById('tunerNote'),
@@ -964,6 +975,8 @@
     catch(e){ console.error('[SYNC LOOPER] Failed to save input channel', e); }
     console.log('[SYNC LOOPER] Input channel selection:', els.inputChannelSelect.value);
   });
+
+  els.countToggle.addEventListener('change', () => setCountEnabled(els.countToggle.checked));
 
   // ---------- チューナーの開始/停止 ----------
   els.tunerToggle.addEventListener('change', () => {
@@ -1327,6 +1340,7 @@
       els.performPanel.classList.remove('hidden');
       estimateLatencyOffset();
       estimatePlaybackOffset();
+      setCountEnabled(syncMode === 'standalone');
       requestWakeLock();
       updateBpmModeUI();
       if (syncMode === 'standalone'){
@@ -1646,9 +1660,17 @@
   // ---------- カウント音源(スタンドアロン・最初の録音が終わるまで) ----------
   let clickGain = null;
 
-  // まだ1つも録音が無い間だけ鳴らす。ループができたらそれ自体が基準になるので止める
+  // 鳴らすかどうかはスイッチが唯一の基準。
+  // 初期状態ではスタンドアロン時のみオンにし、最初の録音が終わると自動でオフに倒す
+  // (ループができればそれ自体がテンポの基準になるため)。以後は任意でオンにできる。
+  let countEnabled = false;
+  function setCountEnabled(on){
+    countEnabled = !!on;
+    els.countToggle.checked = countEnabled;
+    console.log('[SYNC LOOPER] Count-in:', countEnabled);
+  }
   function shouldCountIn(){
-    return syncMode === 'standalone' && audioCtx && clickGain && !tracks.some(t => t.buffer);
+    return countEnabled && audioCtx && clickGain;
   }
   function playClick(when, accent){
     const osc = audioCtx.createOscillator();
@@ -1823,6 +1845,8 @@
     t.originalBuffer = buffer;
     t.reversed = false;
     t.fx.reverse = false;
+    // 最初の1本が録れた時点でカウントを自動的に切る
+    if (countEnabled && tracks.filter(x => x.buffer).length === 1) setCountEnabled(false);
     startPlayback(t, t.recPlayTime);
     renderTrackList();
     if (t.id === selectedId){
@@ -2032,7 +2056,7 @@
   // ミニ波形は「常に最大小節数(8小節)ぶんの固定の物差し」で描く。
   // 短いループはその中で繰り返し表示されるので、
   // 2小節のトラックなら8小節の枠に同じ波形が4回並ぶ。
-  const MINI_SEGMENTS = 32;   // 8小節 × 4拍
+  const MINI_SEGMENTS = 64;   // 8小節 × 8分音符
 
   function segmentsPerLoop(t){
     return Math.max(1, Math.round(MINI_SEGMENTS * t.bars / MAX_BARS));
