@@ -585,15 +585,15 @@
       <div class="effects-grid" id="effectsGrid">
         <div class="fx-cell" data-fx="reverb">
           <button class="fx-toggle"><div class="fx-dot"></div><div class="fx-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><circle cx="12" cy="12" r="7"></circle><circle cx="12" cy="12" r="11"></circle></svg></div><div class="fx-label">REVERB</div></button>
-          <input type="range" class="fx-amount" min="0" max="100" value="50">
+          <input type="range" class="fx-amount" min="0" max="100" value="25">
         </div>
         <div class="fx-cell" data-fx="delay">
           <button class="fx-toggle"><div class="fx-dot"></div><div class="fx-icon"><svg viewBox="0 0 24 24"><path d="M3 12h4M11 12h4M19 12h2"></path></svg></div><div class="fx-label">DELAY</div></button>
-          <input type="range" class="fx-amount" min="0" max="100" value="50">
+          <input type="range" class="fx-amount" min="0" max="100" value="25">
         </div>
         <div class="fx-cell" data-fx="filter">
           <button class="fx-toggle"><div class="fx-dot"></div><div class="fx-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="2.4"></circle></svg></div><div class="fx-label">FILTER</div></button>
-          <input type="range" class="fx-amount" min="0" max="100" value="50">
+          <input type="range" class="fx-amount" min="0" max="100" value="25">
         </div>
         <div class="fx-cell" data-fx="reverse">
           <button class="fx-toggle"><div class="fx-dot"></div><div class="fx-icon"><svg viewBox="0 0 24 24"><path d="M4 8l-2 4 2 4M20 8l2 4-2 4" stroke-linecap="round" stroke-linejoin="round"></path></svg></div><div class="fx-label">REVERSE</div></button>
@@ -601,7 +601,7 @@
         </div>
         <div class="fx-cell" data-fx="tape">
           <button class="fx-toggle"><div class="fx-dot"></div><div class="fx-icon"><svg viewBox="0 0 24 24"><circle cx="7" cy="12" r="4"></circle><circle cx="17" cy="12" r="4"></circle></svg></div><div class="fx-label">TAPE</div></button>
-          <input type="range" class="fx-amount" min="0" max="100" value="50">
+          <input type="range" class="fx-amount" min="0" max="100" value="25">
         </div>
       </div>
         <div class="fx-caption">エフェクトは選択中トラックに個別にかかります</div>
@@ -634,10 +634,10 @@
 
 <script>
 (() => {
-  const APP_VERSION = 'v18';
+  const APP_VERSION = 'v19';
   // デプロイのたびに APP_VERSION / sw.js の CACHE_NAME と一緒に更新する。
   // UTCで持ち、表示時に閲覧者のローカル時刻へ変換する(時差の誤解を避けるため)
-  const APP_BUILT_AT = '2026-08-08T02:41:00Z';
+  const APP_BUILT_AT = '2026-08-08T09:08:00Z';
   console.log('[SYNC LOOPER] Script init start. Version:', APP_VERSION);
   window.addEventListener('error', (e) => {
     console.error('[SYNC LOOPER] window error event:', e.message, e.error);
@@ -860,7 +860,7 @@
     loopStartPulse:0, recAlignRefId:null, recAlignRefLen:0, recAlignRefStart:0,
     fx:{ reverb:false, delay:false, filter:false, reverse:false, tape:false },
     fxPending:{ reverb:null, delay:null, filter:null, reverse:null, tape:null },
-    fxAmount:{ reverb:50, delay:50, filter:50, tape:50 },
+    fxAmount:{ reverb:25, delay:25, filter:25, tape:25 },
     fxChain:null
   }));
   let selectedId = 'A';
@@ -976,7 +976,7 @@
     console.log('[SYNC LOOPER] Input channel selection:', els.inputChannelSelect.value);
   });
 
-  els.countToggle.addEventListener('change', () => setCountEnabled(els.countToggle.checked));
+  els.countToggle.addEventListener('change', () => setCountEnabled(els.countToggle.checked, true));
 
   // ---------- チューナーの開始/停止 ----------
   els.tunerToggle.addEventListener('change', () => {
@@ -1340,7 +1340,7 @@
       els.performPanel.classList.remove('hidden');
       estimateLatencyOffset();
       estimatePlaybackOffset();
-      setCountEnabled(syncMode === 'standalone');
+      setCountEnabled(syncMode === 'standalone', false);
       requestWakeLock();
       updateBpmModeUI();
       if (syncMode === 'standalone'){
@@ -1664,10 +1664,15 @@
   // 初期状態ではスタンドアロン時のみオンにし、最初の録音が終わると自動でオフに倒す
   // (ループができればそれ自体がテンポの基準になるため)。以後は任意でオンにできる。
   let countEnabled = false;
-  function setCountEnabled(on){
+  // オンにした直後は次の小節頭が来るまで鳴らさないためのフラグ
+  let countPendingStart = false;
+  // alignToBar=true で「次の小節頭まで待ってから鳴らし始める」。
+  // 演奏中に手で入れたとき、拍の途中から鳴き出してループと頭がずれないようにする。
+  function setCountEnabled(on, alignToBar){
     countEnabled = !!on;
+    countPendingStart = !!(on && alignToBar);
     els.countToggle.checked = countEnabled;
-    console.log('[SYNC LOOPER] Count-in:', countEnabled);
+    console.log('[SYNC LOOPER] Count-in:', countEnabled, countPendingStart ? '(次の小節頭から)' : '');
   }
   function shouldCountIn(){
     return countEnabled && audioCtx && clickGain;
@@ -1691,6 +1696,11 @@
     if (mod(pulseCount, PPQ) !== PPQ - 1) return;
     const nextPulse = pulseCount + 1;
     const beat = Math.floor(mod(nextPulse, PULSES_PER_BAR) / PPQ);
+    // 小節頭を待っている間は鳴らさない(1拍目から始めてループと頭を揃える)
+    if (countPendingStart){
+      if (beat !== 0) return;
+      countPendingStart = false;
+    }
     playClick(audioCtx.currentTime + secondsPerPulse(), beat === 0);
   }
 
