@@ -1,0 +1,13 @@
+{
+  "name": "loop-console-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "LOOP CONSOLE の E2E テスト(開発時のみ使用。アプリ本体はビルド不要のまま)",
+  "scripts": {
+    "test": "node run-all.js",
+    "setup": "npm install && npx playwright install chromium"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.0"
+  }
+}
