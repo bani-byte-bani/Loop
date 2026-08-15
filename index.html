@@ -346,6 +346,7 @@
   .cal-row{ display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:6px 14px; }
   .latency-cal{ font-family:'JetBrains Mono', monospace; font-size:9px; letter-spacing:0.06em; color:var(--ink-dim); display:inline-flex; align-items:center; gap:5px; cursor:pointer; }
   .latency-cal input[type="number"]{ width:54px; padding:3px 5px; text-align:center; font-family:'JetBrains Mono', monospace; font-size:10px; border:1px solid var(--line); border-radius:var(--radius); background:var(--sunk); color:var(--ink); }
+  .cal-note{ font-size:8px; opacity:0.65; white-space:nowrap; }
 
   /* track select */
   .track-row{ display:flex; align-items:center; gap:12px; padding:12px 4px; border-bottom:1px solid var(--line); cursor:pointer; }
@@ -587,8 +588,13 @@
             <label class="latency-cal" title="録音した音が遅れて聞こえる場合は数値を大きくしてください(入力レイテンシ)">
               録音補正 <input type="number" id="latencyInput" min="0" max="500" step="5" value="0"> ms
             </label>
-            <label class="latency-cal" title="ループ再生がクロックより遅れて聞こえる場合は数値を大きくしてください(出力レイテンシ)">
-              再生補正 <input type="number" id="playbackInput" min="0" max="300" step="5" value="0"> ms
+            <label class="latency-cal" title="ループ再生がクロックより遅れて聞こえる場合は数値を大きくしてください(出力レイテンシ)。↑↓キーで1msずつ微調整できます">
+              再生補正 <input type="number" id="playbackInput" min="0" max="500" step="1" value="0"> ms
+              <span class="cal-note" id="outLatencyNote"></span>
+            </label>
+            <label class="latency-cal" title="実測した出力レイテンシを再生補正へ自動で反映します。数値を手で変えると自動はオフになります">
+              <span class="sw-group"><span class="sw-mark sw-mark-off">0</span><span class="sw"><input type="checkbox" id="playbackAutoToggle" checked><span class="sw-track"></span><span class="sw-knob"></span></span><span class="sw-mark sw-mark-on">I</span></span>
+              再生補正の自動追従
             </label>
             <label class="latency-cal" title="録音後、しきい値を超えた最初の音が小節頭に来るよう自動でずらします">
               <span class="sw-group"><span class="sw-mark sw-mark-off">0</span><span class="sw"><input type="checkbox" id="autoAdjustToggle"><span class="sw-track"></span><span class="sw-knob"></span></span><span class="sw-mark sw-mark-on">I</span></span>
@@ -667,10 +673,10 @@
 
 <script>
 (() => {
-  const APP_VERSION = 'v20';
+  const APP_VERSION = 'v22';
   // デプロイのたびに APP_VERSION / sw.js の CACHE_NAME と一緒に更新する。
   // UTCで持ち、表示時に閲覧者のローカル時刻へ変換する(時差の誤解を避けるため)
-  const APP_BUILT_AT = '2026-08-12T17:03:00Z';
+  const APP_BUILT_AT = '2026-08-15T06:25:00Z';
   console.log('[SYNC LOOPER] Script init start. Version:', APP_VERSION);
   window.addEventListener('error', (e) => {
     console.error('[SYNC LOOPER] window error event:', e.message, e.error);
@@ -721,6 +727,8 @@
     inMeterClip: document.getElementById('inMeterClip'),
     latencyInput: document.getElementById('latencyInput'),
     playbackInput: document.getElementById('playbackInput'),
+    outLatencyNote: document.getElementById('outLatencyNote'),
+    playbackAutoToggle: document.getElementById('playbackAutoToggle'),
     inputChannelSelect: document.getElementById('inputChannelSelect'),
     tunerToggle: document.getElementById('tunerToggle'),
     countToggle: document.getElementById('countToggle'),
@@ -771,9 +779,15 @@
 
   let midiAccess = null, midiInput = null;
   let audioCtx = null, micStream = null, sourceNode = null, workletNode = null, destNode = null, masterGain = null;
+  let outputPath = null;        // 'direct' | 'mediastream'
   let captureNode = null, tunerAnalyser = null, inputAnalyser = null, inputBuf = null;
 
+  // 直近のクロックパルス到着時刻(ms)。1小節ぶん持って最小二乗法で傾きを出す。
+  // 単純な「平均間隔」は差分の総和が途中で打ち消し合うため、実質は両端2点の差でしかなく、
+  // 到着ジッタがそのまま乗る。回帰なら全点が効くので桁違いに安定する。
   let clockTimestamps = [];
+  const CLOCK_WINDOW = PULSES_PER_BAR;
+  let clockPulseMs = 0;         // 実測の1パルスあたりms(0なら未確定)
   let pulseCount = 0;
   let running = false;
 
@@ -998,7 +1012,10 @@
   loadLatencyOffset();
 
   // ---------- 再生レイテンシ補正 ----------
-  const PLAYBACK_STORAGE_KEY = 'syncLooperPlaybackMs';
+  // v20以前は出力が必ず MediaStream → <audio> を通っており、そのぶんの遅れを
+  // 手動の再生補正に押し込む形になっていた。v21で経路を直結にしたため、
+  // 当時の値をそのまま引き継ぐと今度は行き過ぎる。キーを変えて推定し直す。
+  const PLAYBACK_STORAGE_KEY = 'syncLooperPlaybackMs2';
 
   function loadPlaybackOffset(){
     const raw = localStorage.getItem(PLAYBACK_STORAGE_KEY);
@@ -1010,22 +1027,68 @@
   }
   function setPlaybackOffset(ms){
     // 上限は先読み(ガード)で吸収できる範囲まで
-    playbackOffsetMs = Math.min(300, Math.max(0, isFinite(ms) ? ms : 0));
+    playbackOffsetMs = Math.min(500, Math.max(0, isFinite(ms) ? ms : 0));
     els.playbackInput.value = playbackOffsetMs;
     try{ localStorage.setItem(PLAYBACK_STORAGE_KEY, String(playbackOffsetMs)); }
     catch(e){ console.error('[SYNC LOOPER] Failed to save playback offset', e); }
     console.log('[SYNC LOOPER] Playback offset set to', playbackOffsetMs, 'ms');
   }
-  // 保存値が無ければ出力レイテンシから初期値を推定する
-  function estimatePlaybackOffset(){
-    if (localStorage.getItem(PLAYBACK_STORAGE_KEY) !== null) return;
-    const seconds = audioCtx.outputLatency || audioCtx.baseLatency || 0;
-    const ms = Math.round(seconds * 1000 / 5) * 5;
-    console.log('[SYNC LOOPER] Estimated output latency:', ms, 'ms');
-    setPlaybackOffset(ms);
+  // 出力レイテンシは実測できるので、既定では再生補正へ自動で反映する。
+  // 手で数値を変えたらそちらを優先する(自動はオフになる)。
+  const PLAYBACK_AUTO_KEY = 'syncLooperPlaybackAuto';
+  let playbackAuto = true;
+  let measuredOutputMs = -1;
+  let lastLatencyCheckAt = 0;
+
+  function setPlaybackAuto(on, silent){
+    playbackAuto = !!on;
+    els.playbackAutoToggle.checked = playbackAuto;
+    try{ localStorage.setItem(PLAYBACK_AUTO_KEY, playbackAuto ? '1' : '0'); }
+    catch(e){ console.error('[SYNC LOOPER] Failed to save playback auto flag', e); }
+    if (!silent) console.log('[SYNC LOOPER] Playback offset auto-follow:', playbackAuto);
+    if (playbackAuto) refreshOutputLatency(true);
+    else els.outLatencyNote.textContent = latencyNoteText(measuredOutputMs, false);
   }
-  els.playbackInput.addEventListener('change', () => setPlaybackOffset(parseFloat(els.playbackInput.value)));
+
+  function latencyNoteText(ms, auto){
+    if (ms < 0) return '';
+    if (outputPath === 'mediastream') return `実測 ${ms}ms +出力先経由ぶん`;
+    return auto ? `実測 ${ms}ms → 自動` : `実測 ${ms}ms`;
+  }
+
+  // AudioContext の outputLatency は音が流れ始めるまで確定しないので、
+  // 接続直後の一発読みでは 0 のことがある。定期的に読み直して追従する。
+  function refreshOutputLatency(force){
+    if (!audioCtx) return;
+    const now = performance.now();
+    if (!force && now - lastLatencyCheckAt < 1000) return;
+    lastLatencyCheckAt = now;
+    const seconds = audioCtx.outputLatency || audioCtx.baseLatency || 0;
+    const ms = Math.round(seconds * 1000);
+    if (ms === measuredOutputMs && !force) return;
+    if (ms !== measuredOutputMs){
+      measuredOutputMs = ms;
+      console.log('[SYNC LOOPER] Measured output latency:', ms, 'ms via', outputPath);
+    }
+    els.outLatencyNote.textContent = latencyNoteText(ms, playbackAuto);
+    if (!playbackAuto) return;
+    // 録音中に補正値が動くと切り出しの締切がずれるので、そのときは見送る
+    if (tracks.some(t => t.state === 'recording' || t.state === 'rec-armed')) return;
+    if (Math.abs(ms - playbackOffsetMs) >= 2) setPlaybackOffset(ms);
+  }
+
+  els.playbackInput.addEventListener('change', () => {
+    setPlaybackOffset(parseFloat(els.playbackInput.value));
+    // 手で決めた値を自動追従で上書きしない
+    if (playbackAuto) setPlaybackAuto(false);
+  });
+  els.playbackAutoToggle.addEventListener('change', () => setPlaybackAuto(els.playbackAutoToggle.checked));
   loadPlaybackOffset();
+  try{
+    const raw = localStorage.getItem(PLAYBACK_AUTO_KEY);
+    playbackAuto = raw === null ? true : raw === '1';
+  } catch(e){}
+  els.playbackAutoToggle.checked = playbackAuto;
 
   // ---------- 入力チャンネル選択(保存する) ----------
   try{
@@ -1104,14 +1167,27 @@
     return null;
   }
 
-  // 1パルスあたりの秒数。スタンドアロンは設定値、外部クロックは実測の平均から求める
+  // clockTimestamps に最小二乗法で直線を当てはめ、1パルスあたりのms(傾き)を求める。
+  // 添字は 0,1,2,… と等間隔なので、分母は閉じた式で書ける。
+  function computePulseInterval(){
+    const n = clockTimestamps.length;
+    if (n < 8){ clockPulseMs = 0; return; }
+    const meanI = (n - 1) / 2;
+    let meanT = 0;
+    for (let i=0;i<n;i++) meanT += clockTimestamps[i];
+    meanT /= n;
+    let cov = 0;
+    for (let i=0;i<n;i++) cov += (i - meanI) * (clockTimestamps[i] - meanT);
+    const varI = n * (n*n - 1) / 12;
+    const slope = cov / varI;
+    // ありえない値(パルスの取りこぼしや時刻の飛び)は捨てる。20〜300BPM相当の範囲。
+    if (isFinite(slope) && slope > 60000/300/PPQ && slope < 60000/20/PPQ) clockPulseMs = slope;
+  }
+
+  // 1パルスあたりの秒数。スタンドアロンは設定値、外部クロックは実測の傾きから求める
   function secondsPerPulse(){
     if (syncMode === 'standalone') return 60 / standaloneBpm / PPQ;
-    if (clockTimestamps.length >= 2){
-      let sum = 0;
-      for (let i=1;i<clockTimestamps.length;i++) sum += clockTimestamps[i]-clockTimestamps[i-1];
-      return (sum / (clockTimestamps.length-1)) / 1000;
-    }
+    if (clockPulseMs > 0) return clockPulseMs / 1000;
     return 60 / 120 / PPQ;
   }
 
@@ -1446,7 +1522,7 @@
       els.setupPanel.classList.add('hidden');
       els.performPanel.classList.remove('hidden');
       estimateLatencyOffset();
-      estimatePlaybackOffset();
+      refreshOutputLatency(true);
       setCountEnabled(syncMode === 'standalone', false);
       requestWakeLock();
       updateBpmModeUI();
@@ -1717,21 +1793,48 @@
     clickGain.gain.value = 1;
     clickGain.connect(masterGain);
 
+    await connectOutput();
+  }
+
+  // 出力経路。MediaStreamDestination → <audio> を通すと、その間に
+  // ジッタバッファが入って数十msの固定遅れが乗る。しかも audioCtx.outputLatency は
+  // その経路を含まないので、再生補正の推定値も当てにならなくなる。
+  // 素直に audioCtx.destination へ直結できるなら必ずそちらを使う。
+  async function connectOutput(){
+    const audioOutId = els.audioOutSelect.value;
+    // 出力デバイスの指定は、AudioContext 自身が setSinkId を持っていれば
+    // 直結のまま行える(Chrome 110以降)。
+    if (audioOutId && typeof audioCtx.setSinkId === 'function'){
+      try {
+        await audioCtx.setSinkId(audioOutId);
+      } catch(e){
+        showError('出力デバイスの指定に失敗しました。既定の出力を使用します。');
+      }
+    }
+    if (!audioOutId || typeof audioCtx.setSinkId === 'function'){
+      masterGain.connect(audioCtx.destination);
+      outputPath = 'direct';
+      console.log('[SYNC LOOPER] Output path: direct (AudioContext.destination)');
+      return;
+    }
+    // ここに来るのは「デバイス指定あり・AudioContext.setSinkId 非対応」のときだけ。
+    // 遅延は増えるが、指定した出力から音が出ることを優先する。
     destNode = audioCtx.createMediaStreamDestination();
     masterGain.connect(destNode);
     els.outputEl.srcObject = destNode.stream;
-    const audioOutId = els.audioOutSelect.value;
-    if (audioOutId && typeof els.outputEl.setSinkId === 'function'){
+    if (typeof els.outputEl.setSinkId === 'function'){
       try { await els.outputEl.setSinkId(audioOutId); } catch(e){ showError('出力デバイスの指定に失敗しました。既定の出力を使用します。'); }
     }
     await els.outputEl.play().catch(()=>{});
+    outputPath = 'mediastream';
+    console.log('[SYNC LOOPER] Output path: MediaStream → <audio> (fallback, adds latency)');
   }
 
   // ---------- MIDI clock + control input ----------
   function onMidiMessage(e){
     const status = e.data[0];
     if (syncMode === 'external'){
-      if (status === 0xF8){ handleClockPulse(); return; }
+      if (status === 0xF8){ handleClockPulse(e.timeStamp); return; }
       if (status === 0xFA){ pulseCount = 0; running = true; setSyncUI(true); return; }
       if (status === 0xFB){ running = true; setSyncUI(true); return; }
       if (status === 0xFC){ running = false; return; }
@@ -1848,17 +1951,18 @@
     return mod(pulseCount - t.recAlignRefStart, t.recAlignRefLen) === 0;
   }
 
-  function handleClockPulse(){
+  function handleClockPulse(ts){
     if (syncMode === 'external'){
-      const now = performance.now();
-      lastClockPulseAt = now;
-      clockTimestamps.push(now);
-      if (clockTimestamps.length > 48) clockTimestamps.shift();
-      updateBpm();
+      // MIDIメッセージ自身のタイムスタンプを使う。ハンドラの中で performance.now() を
+      // 読むと、メインスレッドが詰まっていた分がそのままテンポ推定の誤差になる。
+      const arrived = (typeof ts === 'number' && isFinite(ts)) ? ts : performance.now();
+      lastClockPulseAt = performance.now();
+      clockTimestamps.push(arrived);
+      if (clockTimestamps.length > CLOCK_WINDOW) clockTimestamps.shift();
+      computePulseInterval();
       if (!running){ running = true; setSyncUI(true); }
-    } else {
-      els.bpmNum.textContent = standaloneBpm.toFixed(1);
     }
+    updateBpm();
     pulseCount++;
     const posInBar = pulseCount % PULSES_PER_BAR;
     const barBoundary = posInBar === 0;
@@ -1903,13 +2007,24 @@
     updateDialProgress();
   }
 
-  function updateBpm(){
-    if (clockTimestamps.length < 2) return;
-    let sum = 0;
-    for (let i=1;i<clockTimestamps.length;i++) sum += clockTimestamps[i]-clockTimestamps[i-1];
-    const avg = sum/(clockTimestamps.length-1);
-    const bpm = 60000/(avg*PPQ);
-    if (isFinite(bpm)) els.bpmNum.textContent = bpm.toFixed(1);
+  // BPM表示。パルスごと(毎秒24回)に書き換えると、ごくわずかな揺れでも
+  // 末尾の桁が 119.9 / 120.0 と往復してちらついて読めない。
+  // 表示は間引いたうえで、意味のある差が出たときだけ書き換える。
+  let bpmShown = 0, bpmShownAt = 0;
+  const BPM_REPAINT_MS = 250;
+  const BPM_HYSTERESIS = 0.2;
+  function updateBpm(force){
+    const bpm = syncMode === 'standalone'
+      ? standaloneBpm
+      : (clockPulseMs > 0 ? 60000/(clockPulseMs*PPQ) : 0);
+    if (!isFinite(bpm) || bpm <= 0) return;
+    if (!force && bpmShown){
+      if (performance.now() - bpmShownAt < BPM_REPAINT_MS) return;
+      if (Math.abs(bpm - bpmShown) < BPM_HYSTERESIS) return;
+    }
+    bpmShown = bpm;
+    bpmShownAt = performance.now();
+    els.bpmNum.textContent = bpm.toFixed(1);
   }
 
   // ---------- bars ----------
@@ -2171,7 +2286,11 @@
     if (performance.now() - lastClockPulseAt < CLOCK_TIMEOUT_MS) return;
     running = false;
     setSyncUI(false);
+    // 復帰時に古い到着時刻と新しい到着時刻をまたいで回帰すると、
+    // 途切れていた時間ぶんが「遅いテンポ」として出てしまう
     clockTimestamps = [];
+    clockPulseMs = 0;
+    bpmShown = 0;
     showTransportMessage('MIDIクロックが途切れました。接続を確認してください。');
     console.error('[SYNC LOOPER] External clock lost (no pulse for', CLOCK_TIMEOUT_MS, 'ms)');
   }
@@ -2730,8 +2849,9 @@
     }
     ctx2d.strokeStyle = '#a0a49f';
     ctx2d.lineWidth = 1;
-    const displayedBpm = syncMode === 'standalone' ? standaloneBpm : parseFloat(els.bpmNum.textContent || 120);
-    const barDur = (60/displayedBpm)*4;
+    // 表示テキストを読み返すと、間引き/ヒステリシス後の値や '---' に引きずられる。
+    // 小節線は実際のクロックから引く。
+    const barDur = PULSES_PER_BAR * secondsPerPulse();
     if (barDur > 0 && isFinite(barDur)){
       const barCount = Math.round(t.buffer.duration / barDur);
       for (let b=0; b<=barCount; b++){
@@ -2777,6 +2897,7 @@
     updateTrackPlayheads();
     updateInputMeter();
     checkClockWatchdog();
+    refreshOutputLatency();
     requestAnimationFrame(playheadLoop);
   }
 
