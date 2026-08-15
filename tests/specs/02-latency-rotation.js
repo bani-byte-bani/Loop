@@ -7,7 +7,12 @@
 //
 // 注意: 検証用の正弦波は 440Hz にしてはいけない。
 // 2 秒バッファに 880 周期ちょうど収まってしまい、回転しても波形が連続のままで
-// 継ぎ目が出ない。443.3Hz のように非整数周期になる周波数を使う。
+// 継ぎ目が出ない。非整数周期になる周波数を使う(SIGNALS.spliceProbe)。
+//
+// 段差の「大きさ」は録音開始位相しだいの乱数なので、固定値でしきいを引くと
+// たまたま前後の位相が近い回に落ちる。正弦波自身の最大傾き(2πf/sr)を基準に
+// 判定する。クリーンな正弦波はこの傾きを超えられないので、超えていれば
+// そこに不連続点があると断定できる。
 
 const { openApp, connectApp, recordTrack, markBuffers, latestRecordedBuffer, SIGNALS } = require('../lib/harness');
 
@@ -33,11 +38,16 @@ module.exports = {
       const expectedSplice = buf.length - expectedRotation;
       const diff = buf.spliceAt - expectedSplice;
 
-      ctx.info(`補正 ${offsetMs}ms: 継ぎ目 実測 ${buf.spliceAt} / 期待 ${expectedSplice} (段差 ${buf.worstJump.toFixed(2)})`);
+      // クリーンな正弦波が取りうる最大の隣接差。これを明確に超えていれば不連続点がある
+      const naturalSlope = 2 * Math.PI * SIGNALS.SPLICE_PROBE_HZ / buf.sampleRate;
+      const ratio = buf.worstJump / naturalSlope;
+
+      ctx.info(`補正 ${offsetMs}ms: 継ぎ目 実測 ${buf.spliceAt} / 期待 ${expectedSplice} ` +
+               `(段差 ${buf.worstJump.toFixed(3)} = 正弦波の最大傾きの ${ratio.toFixed(1)}倍)`);
       ctx.check(
         `補正 ${offsetMs}ms で意図した量だけ回転している`,
-        Math.abs(diff) <= 256 && buf.worstJump > 0.2,
-        `差分 ${diff} サンプル`
+        Math.abs(diff) <= 256 && ratio > 1.5,
+        `差分 ${diff} サンプル / 段差比 ${ratio.toFixed(1)}倍`
       );
       await page.close();
     }

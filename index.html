@@ -592,6 +592,10 @@
               再生補正 <input type="number" id="playbackInput" min="0" max="500" step="1" value="0"> ms
               <span class="cal-note" id="outLatencyNote"></span>
             </label>
+            <label class="latency-cal" title="実測した出力レイテンシを再生補正へ自動で反映します。数値を手で変えると自動はオフになります">
+              <span class="sw-group"><span class="sw-mark sw-mark-off">0</span><span class="sw"><input type="checkbox" id="playbackAutoToggle" checked><span class="sw-track"></span><span class="sw-knob"></span></span><span class="sw-mark sw-mark-on">I</span></span>
+              再生補正の自動追従
+            </label>
             <label class="latency-cal" title="録音後、しきい値を超えた最初の音が小節頭に来るよう自動でずらします">
               <span class="sw-group"><span class="sw-mark sw-mark-off">0</span><span class="sw"><input type="checkbox" id="autoAdjustToggle"><span class="sw-track"></span><span class="sw-knob"></span></span><span class="sw-mark sw-mark-on">I</span></span>
               オートアジャスト
@@ -669,10 +673,10 @@
 
 <script>
 (() => {
-  const APP_VERSION = 'v21';
+  const APP_VERSION = 'v22';
   // デプロイのたびに APP_VERSION / sw.js の CACHE_NAME と一緒に更新する。
   // UTCで持ち、表示時に閲覧者のローカル時刻へ変換する(時差の誤解を避けるため)
-  const APP_BUILT_AT = '2026-08-15T05:40:00Z';
+  const APP_BUILT_AT = '2026-08-15T06:25:00Z';
   console.log('[SYNC LOOPER] Script init start. Version:', APP_VERSION);
   window.addEventListener('error', (e) => {
     console.error('[SYNC LOOPER] window error event:', e.message, e.error);
@@ -724,6 +728,7 @@
     latencyInput: document.getElementById('latencyInput'),
     playbackInput: document.getElementById('playbackInput'),
     outLatencyNote: document.getElementById('outLatencyNote'),
+    playbackAutoToggle: document.getElementById('playbackAutoToggle'),
     inputChannelSelect: document.getElementById('inputChannelSelect'),
     tunerToggle: document.getElementById('tunerToggle'),
     countToggle: document.getElementById('countToggle'),
@@ -1028,20 +1033,62 @@
     catch(e){ console.error('[SYNC LOOPER] Failed to save playback offset', e); }
     console.log('[SYNC LOOPER] Playback offset set to', playbackOffsetMs, 'ms');
   }
-  // 保存値が無ければ出力レイテンシから初期値を推定する。
-  // 直結経路なら outputLatency が実際の経路そのものを表すので、これがよく当たる。
-  function estimatePlaybackOffset(){
+  // 出力レイテンシは実測できるので、既定では再生補正へ自動で反映する。
+  // 手で数値を変えたらそちらを優先する(自動はオフになる)。
+  const PLAYBACK_AUTO_KEY = 'syncLooperPlaybackAuto';
+  let playbackAuto = true;
+  let measuredOutputMs = -1;
+  let lastLatencyCheckAt = 0;
+
+  function setPlaybackAuto(on, silent){
+    playbackAuto = !!on;
+    els.playbackAutoToggle.checked = playbackAuto;
+    try{ localStorage.setItem(PLAYBACK_AUTO_KEY, playbackAuto ? '1' : '0'); }
+    catch(e){ console.error('[SYNC LOOPER] Failed to save playback auto flag', e); }
+    if (!silent) console.log('[SYNC LOOPER] Playback offset auto-follow:', playbackAuto);
+    if (playbackAuto) refreshOutputLatency(true);
+    else els.outLatencyNote.textContent = latencyNoteText(measuredOutputMs, false);
+  }
+
+  function latencyNoteText(ms, auto){
+    if (ms < 0) return '';
+    if (outputPath === 'mediastream') return `実測 ${ms}ms +出力先経由ぶん`;
+    return auto ? `実測 ${ms}ms → 自動` : `実測 ${ms}ms`;
+  }
+
+  // AudioContext の outputLatency は音が流れ始めるまで確定しないので、
+  // 接続直後の一発読みでは 0 のことがある。定期的に読み直して追従する。
+  function refreshOutputLatency(force){
+    if (!audioCtx) return;
+    const now = performance.now();
+    if (!force && now - lastLatencyCheckAt < 1000) return;
+    lastLatencyCheckAt = now;
     const seconds = audioCtx.outputLatency || audioCtx.baseLatency || 0;
     const ms = Math.round(seconds * 1000);
-    els.outLatencyNote.textContent = outputPath === 'direct'
-      ? `実測 出力${ms}ms`
-      : `実測 出力${ms}ms + 出力先経由ぶん`;
-    console.log('[SYNC LOOPER] Measured output latency:', ms, 'ms via', outputPath);
-    if (localStorage.getItem(PLAYBACK_STORAGE_KEY) !== null) return;
-    setPlaybackOffset(ms);
+    if (ms === measuredOutputMs && !force) return;
+    if (ms !== measuredOutputMs){
+      measuredOutputMs = ms;
+      console.log('[SYNC LOOPER] Measured output latency:', ms, 'ms via', outputPath);
+    }
+    els.outLatencyNote.textContent = latencyNoteText(ms, playbackAuto);
+    if (!playbackAuto) return;
+    // 録音中に補正値が動くと切り出しの締切がずれるので、そのときは見送る
+    if (tracks.some(t => t.state === 'recording' || t.state === 'rec-armed')) return;
+    if (Math.abs(ms - playbackOffsetMs) >= 2) setPlaybackOffset(ms);
   }
-  els.playbackInput.addEventListener('change', () => setPlaybackOffset(parseFloat(els.playbackInput.value)));
+
+  els.playbackInput.addEventListener('change', () => {
+    setPlaybackOffset(parseFloat(els.playbackInput.value));
+    // 手で決めた値を自動追従で上書きしない
+    if (playbackAuto) setPlaybackAuto(false);
+  });
+  els.playbackAutoToggle.addEventListener('change', () => setPlaybackAuto(els.playbackAutoToggle.checked));
   loadPlaybackOffset();
+  try{
+    const raw = localStorage.getItem(PLAYBACK_AUTO_KEY);
+    playbackAuto = raw === null ? true : raw === '1';
+  } catch(e){}
+  els.playbackAutoToggle.checked = playbackAuto;
 
   // ---------- 入力チャンネル選択(保存する) ----------
   try{
@@ -1475,7 +1522,7 @@
       els.setupPanel.classList.add('hidden');
       els.performPanel.classList.remove('hidden');
       estimateLatencyOffset();
-      estimatePlaybackOffset();
+      refreshOutputLatency(true);
       setCountEnabled(syncMode === 'standalone', false);
       requestWakeLock();
       updateBpmModeUI();
@@ -2850,6 +2897,7 @@
     updateTrackPlayheads();
     updateInputMeter();
     checkClockWatchdog();
+    refreshOutputLatency();
     requestAnimationFrame(playheadLoop);
   }
 

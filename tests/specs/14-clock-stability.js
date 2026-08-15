@@ -59,6 +59,35 @@ module.exports = {
     ctx.info(`出力経路: ${page.consoleLogs.filter((l) => l.includes('Output path')).join(' / ') || '(ログなし)'}`);
     ctx.check('出力先未指定なら AudioContext.destination へ直結する', direct);
 
+    // --- 再生補正の自動追従 ---
+    // outputLatency は音が流れ始めるまで確定しないので、少し待ってから見る
+    {
+      await page.waitForTimeout(1500);
+      const st = await page.evaluate(() => ({
+        auto: document.getElementById('playbackAutoToggle').checked,
+        offset: parseFloat(document.getElementById('playbackInput').value),
+        note: document.getElementById('outLatencyNote').textContent,
+      }));
+      const measured = parseFloat((st.note.match(/(\d+)ms/) || [])[1]);
+      ctx.info(`自動=${st.auto ? 'ON' : 'OFF'} / 再生補正=${st.offset}ms / 表示="${st.note}"`);
+      ctx.check('実測の出力レイテンシを画面に出す', /実測 \d+ms/.test(st.note), st.note);
+      ctx.check('自動追従がONなら再生補正が実測値に一致する',
+        st.auto && isFinite(measured) && Math.abs(st.offset - measured) < 2,
+        `補正${st.offset}ms / 実測${measured}ms`);
+
+      // 手で数値を変えたら自動はオフになり、その値が守られる
+      await page.fill('#playbackInput', '77');
+      await page.dispatchEvent('#playbackInput', 'change');
+      await page.waitForTimeout(1500);
+      const after = await page.evaluate(() => ({
+        auto: document.getElementById('playbackAutoToggle').checked,
+        offset: parseFloat(document.getElementById('playbackInput').value),
+      }));
+      ctx.info(`手動入力後: 自動=${after.auto ? 'ON' : 'OFF'} / 再生補正=${after.offset}ms`);
+      ctx.check('手で入れた値は自動追従に上書きされない',
+        after.auto === false && after.offset === 77, `自動=${after.auto} / ${after.offset}ms`);
+    }
+
     // --- タイムスタンプありの本来の経路 ---
     {
       const samples = driveClock(page, { bpm: 120, seconds: 6, useTimeStamp: true, jitterMs: 8 });
