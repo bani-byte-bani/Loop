@@ -48,9 +48,18 @@ const SIGNALS = {
   //    段差でなければならない。周波数が低いほど最大傾きが小さくなるので、
   //    段差が小さめに出た回でも安全に区別できる。
   //  111.3Hz なら 2 秒で 222.6 周期(非整数)、最大傾きは 440Hz 系の 1/4。
-  SPLICE_PROBE_HZ: 111.3,
+  //
+  //  さらに周波数の違う 2 音を足している。単一の正弦波だと、継ぎ目の前後で
+  //  たまたま位相が近いときに段差がほとんど出ない(録音開始位相しだいの乱数)。
+  //  互いに素な 2 音なら両方が同時に揃う確率はその積まで落ちるので、
+  //  段差が消えることが実質なくなる。
+  SPLICE_PROBE_HZ: [111.3, 157.9],
+  // クリーンな信号が取りうる隣接サンプル差の上限(各成分の最大傾きの和)
+  spliceProbeMaxSlope(sampleRate) {
+    return this.SPLICE_PROBE_HZ.reduce((a, f) => a + 2 * Math.PI * f * 0.5 / sampleRate, 0);
+  },
   spliceProbe() {
-    return { kind: 'tone', freq: 111.3, gain: 1.0 };
+    return { kind: 'tones', freqs: [111.3, 157.9], gain: 0.5 };
   },
   // 立ち上がりの鋭いバーストを一定間隔で。オンセット検出の確認に使う
   burstTrain(periodSec = 0.5, burstSec = 0.02, freq = 880) {
@@ -79,6 +88,14 @@ function installSignal(spec) {
       const g = ctx.createGain();
       g.gain.value = spec.gain;
       osc.connect(g); g.connect(dest); osc.start();
+    } else if (spec.kind === 'tones') {
+      for (const f of spec.freqs) {
+        const osc = ctx.createOscillator();
+        osc.frequency.value = f;
+        const g = ctx.createGain();
+        g.gain.value = spec.gain;
+        osc.connect(g); g.connect(dest); osc.start();
+      }
     } else if (spec.kind === 'leftOnly') {
       const osc = ctx.createOscillator();
       osc.frequency.value = spec.freq;
@@ -263,7 +280,33 @@ async function latestRecordedBuffer(page) {
   });
 }
 
+/**
+ * 指定位置の近傍にある最大の段差を返す。
+ *
+ * 全体から最大値を探す方式は使えない。テスト側の合成音は MediaStream の
+ * 10ms フレーム単位で運ばれ、負荷が高いとフレームが飛ばされる。飛ばされた
+ * 箇所にも波形の不連続ができるため、そちらが「全体の最大」になってしまい、
+ * 回転による継ぎ目を見失う(実際に -20908 サンプルずれた位置を拾って落ちた)。
+ * 「期待した位置に不連続があるか」を直接見れば、他所の乱れに影響されない。
+ */
+async function jumpNear(page, index, radius = 512) {
+  return page.evaluate((o) => {
+    const added = window.__bufs.slice(window.__mark);
+    const maxLen = Math.max(...added.map((b) => b.length));
+    const buf = added.filter((b) => b.length === maxLen).pop();
+    const d = buf.getChannelData(0);
+    const from = Math.max(1, o.index - o.radius);
+    const to = Math.min(d.length, o.index + o.radius);
+    let jump = 0, at = -1;
+    for (let i = from; i < to; i++) {
+      const j = Math.abs(d[i] - d[i - 1]);
+      if (j > jump) { jump = j; at = i; }
+    }
+    return { jump, at };
+  }, { index, radius });
+}
+
 module.exports = {
   launchBrowser, openApp, connectApp, recordTrack,
-  markBuffers, latestRecordedBuffer, SIGNALS,
+  markBuffers, latestRecordedBuffer, jumpNear, SIGNALS,
 };
