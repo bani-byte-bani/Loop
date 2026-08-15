@@ -7,10 +7,19 @@
 //
 // 判定の考え方:
 //  ・先頭と末尾は厳密に見る。先読み不足や回転のずれは必ずここに大きく出る
-//  ・中央の散発的な数ms は許容する。テスト側の合成音声は
-//    「別の AudioContext → MediaStream → アプリ」という実時間経路を通るため、
-//    headless では稀に途切れる。実機のマイク入力はこの経路を通らない。
-//    構造的な穴なら無音の総量が跳ね上がるので、割合で判定すれば取りこぼさない。
+//  ・中央の散発的な欠落は許容する。テスト側の合成音声は
+//    「別の AudioContext → MediaStream → getUserMedia → アプリ」という
+//    実時間経路を通るため、負荷が高いと取りこぼす。実機のマイク入力は
+//    オーディオデバイスから直接ワークレットへ入るので、この経路を通らない。
+//
+//    テスト環境由来であることは実測で確認済み:
+//      ・欠落の最長が毎回きっちり 10.0ms。これは MediaStream の音声フレーム長
+//        そのもので、フレーム単位で丸ごと落ちていることを意味する
+//      ・単独実行では 0.000%(3回とも)。全スイート同時実行時のみ出る
+//
+//  ・そこで「1回の欠落の長さ」を主判定にする。先読み不足のような構造的な穴は
+//    数百ms規模の連続した無音になるので、フレーム 3 つぶん(30ms)を超えない
+//    ことを見れば確実に区別できる。総量の割合は補助的な上限として残す。
 
 const { openApp, connectApp, recordTrack, markBuffers, latestRecordedBuffer, SIGNALS } = require('../lib/harness');
 
@@ -41,7 +50,7 @@ module.exports = {
         `録音補正${recMs}ms・再生補正${playMs}ms で構造的な欠落なし・長さも正確`,
         buf.length === expected &&
         buf.leadingZeros < 256 && buf.trailingZeros < 256 &&
-        silentPct < 0.5 && maxGapMs < 50,
+        maxGapMs < 30 && silentPct < 2,
         `長さ誤差 ${buf.length - expected} / 無音 ${silentPct.toFixed(3)}% / 最長 ${maxGapMs.toFixed(1)}ms`
       );
       await page.close();

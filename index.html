@@ -673,10 +673,10 @@
 
 <script>
 (() => {
-  const APP_VERSION = 'v22';
+  const APP_VERSION = 'v23';
   // デプロイのたびに APP_VERSION / sw.js の CACHE_NAME と一緒に更新する。
   // UTCで持ち、表示時に閲覧者のローカル時刻へ変換する(時差の誤解を避けるため)
-  const APP_BUILT_AT = '2026-08-15T06:25:00Z';
+  const APP_BUILT_AT = '2026-08-15T15:10:00Z';
   console.log('[SYNC LOOPER] Script init start. Version:', APP_VERSION);
   window.addEventListener('error', (e) => {
     console.error('[SYNC LOOPER] window error event:', e.message, e.error);
@@ -913,7 +913,10 @@
     fxPending:{ reverb:null, delay:null, filter:null, reverse:null, tape:null },
     fxAmount:{ reverb:25, delay:25, filter:25, tape:25 },
     fxChain:null, gainNode:null, volume:80, muted:false,
-    overdubArmed:false, overdubbing:false
+    overdubArmed:false, overdubbing:false,
+    // MIDIのStopで止めたトラックと、そのときのループ内位置(秒)。
+    // Continue で元の位置から、Start で頭から鳴らし直すために覚えておく。
+    midiStopped:false, midiStopPhase:0
   }));
   let selectedId = 'A';
   const getSelected = () => tracks.find(t => t.id === selectedId);
@@ -1523,7 +1526,8 @@
       els.performPanel.classList.remove('hidden');
       estimateLatencyOffset();
       refreshOutputLatency(true);
-      setCountEnabled(syncMode === 'standalone', false);
+      // 接続直後は必ず無音なので、スタンドアロンならカウントが鳴り始める
+      updateCountForSilence(false);
       requestWakeLock();
       updateBpmModeUI();
       if (syncMode === 'standalone'){
@@ -1835,9 +1839,9 @@
     const status = e.data[0];
     if (syncMode === 'external'){
       if (status === 0xF8){ handleClockPulse(e.timeStamp); return; }
-      if (status === 0xFA){ pulseCount = 0; running = true; setSyncUI(true); return; }
-      if (status === 0xFB){ running = true; setSyncUI(true); return; }
-      if (status === 0xFC){ running = false; return; }
+      if (status === 0xFA){ midiTransportStart(true); return; }
+      if (status === 0xFB){ midiTransportStart(false); return; }
+      if (status === 0xFC){ midiTransportStop(); return; }
     } else {
       if (status === 0xF8 || status === 0xFA || status === 0xFB || status === 0xFC) return;
     }
@@ -1909,6 +1913,18 @@
   function shouldCountIn(){
     return countEnabled && audioCtx && clickGain;
   }
+  // 録音が1本も無い「無音」状態ではカウントを鳴らし、1本でも録れたら止める。
+  // ループができればそれ自体がテンポの基準になるため。全部消して無音に戻ったら
+  // また鳴り始める(録り直しのテンポが取れないと困るため)。
+  // 外部クロック時はマスター側が音でテンポを出しているので自動では鳴らさない。
+  // alignToBar=false は接続直後だけ。クロックがパルス0から始まるので既に頭が揃っており、
+  // ここで小節頭を待たせると最初の1小節ぶん無音になってしまう。
+  function updateCountForSilence(alignToBar){
+    if (syncMode !== 'standalone' || !audioCtx) return;
+    const hasAudio = tracks.some(t => t.buffer);
+    if (hasAudio && countEnabled) setCountEnabled(false);
+    else if (!hasAudio && !countEnabled) setCountEnabled(true, alignToBar !== false);
+  }
   function playClick(when, accent){
     const osc = audioCtx.createOscillator();
     const g = audioCtx.createGain();
@@ -1934,6 +1950,75 @@
       countPendingStart = false;
     }
     playClick(audioCtx.currentTime + secondsPerPulse(), beat === 0);
+  }
+
+  // ---------- MIDIトランスポート(Start / Continue / Stop)への追従 ----------
+  // 以前はクロック(0xF8)だけを見ており、Start は pulseCount を0に戻すだけ、
+  // Stop は running を倒すだけだった。そのため
+  //  ・マスターを止めてもループは鳴り続ける
+  //  ・Start しても各トラックの基準パルスが取り残され、録音の整列と再生ヘッドがずれる
+  // という状態になっていた。ここで再生の開始・停止までまとめて同期させる。
+
+  // 録音中/待機中を安全に取り消す(Stopで打ち切るとき用)
+  function abortRecording(t){
+    if (t.recPrepTimer){ clearTimeout(t.recPrepTimer); t.recPrepTimer = null; }
+    if (recordingTrackId === t.id) recordingTrackId = null;
+    t.overdubArmed = false; t.overdubbing = false;
+    t.recAlignRefId = null;
+    // 重ね録りの取り消しでは元のループが残っているので、それを止めて停止状態にする
+    if (t.buffer) stopPlayback(t);
+    else { t.state = 'empty'; }
+  }
+
+  function midiTransportStop(){
+    running = false;
+    setSyncUI(false);
+    for (const t of tracks){
+      if (t.state === 'recording' || t.state === 'rec-armed'){
+        abortRecording(t);
+        t.midiStopped = false;
+      } else if (t.state === 'playing'){
+        // 再開時に続きから鳴らせるよう、ループ内のどこまで進んでいたかを控える
+        const dur = t.buffer ? t.buffer.duration : 0;
+        t.midiStopPhase = dur > 0 ? mod(audioCtx.currentTime - t.playStartTime, dur) : 0;
+        stopPlayback(t);
+        t.midiStopped = true;
+      } else if (t.state === 'play-armed' || t.state === 'stop-armed'){
+        // 待機中だったものは、待っていた結果の状態へ落ち着かせる
+        const wantPlay = t.state === 'play-armed';
+        t.state = 'stopped';
+        t.midiStopPhase = 0;
+        t.midiStopped = wantPlay;
+      }
+    }
+    setCountEnabled(false);
+    updateTransportUI(); renderTrackList(); updateStatusLine(getSelected());
+    console.log('[SYNC LOOPER] MIDI Stop — playback halted');
+  }
+
+  // fromTop=true が Start(0xFA)、false が Continue(0xFB)。
+  function midiTransportStart(fromTop){
+    if (fromTop){
+      // 小節の基準を先頭へ。各トラックの基準パルスも一緒に動かさないと
+      // 録音の整列と再生ヘッドが取り残される(手動リセットと同じ扱い)。
+      pulseCount = 0;
+      tracks.forEach(t => { t.loopStartPulse = 0; t.recAlignRefStart = 0; t.midiStopPhase = 0; });
+    }
+    running = true;
+    setSyncUI(true);
+    // マスターの1拍目は「今」なので、待たずに即時開始する。ただし出力レイテンシぶん
+    // 遅れて聞こえるため、その量だけバッファを進めた位置から鳴らして位相を合わせる。
+    const lead = playbackOffsetMs / 1000;
+    for (const t of tracks){
+      if (!t.midiStopped || !t.buffer) continue;
+      t.midiStopped = false;
+      // 途中から再開する場合、周回頭は「その位置ぶん手前のパルス」にあたる。
+      // ここを 0 にしてしまうと重ね録りの整列基準がずれる。
+      const phasePulses = Math.round(t.midiStopPhase / secondsPerPulse());
+      startPlayback(t, undefined, pulseCount - phasePulses, t.midiStopPhase + lead);
+    }
+    updateTransportUI(); renderTrackList(); updateStatusLine(getSelected());
+    console.log('[SYNC LOOPER] MIDI', fromTop ? 'Start' : 'Continue', '— playback resumed');
   }
 
   // 録音開始タイミング: 参照トラックがあればその周回頭、なければ通常の小節頭。
@@ -2117,8 +2202,8 @@
     t.originalBuffer = buffer;
     t.reversed = false;
     t.fx.reverse = false;
-    // 最初の1本が録れた時点でカウントを自動的に切る
-    if (countEnabled && tracks.filter(x => x.buffer).length === 1) setCountEnabled(false);
+    // 録音が入ったのでカウントを切る(無音に戻ればまた鳴り始める)
+    updateCountForSilence();
     startPlayback(t, t.recPlayTime);
     renderTrackList();
     if (t.id === selectedId){
@@ -2131,7 +2216,10 @@
 
   // when を渡すとその時刻ちょうどに再生を開始する(オーディオスレッド側で正確に発火)。
   // 省略時は即時開始。
-  function startPlayback(t, when, atPulse){
+  // offsetSec を渡すと、バッファのその位置から鳴らし始める。
+  // 「もう過ぎてしまった時刻から始めたい」場合(MIDIのStart/Continue)に、
+  // 頭出しをずらすことで位相だけを合わせるために使う。
+  function startPlayback(t, when, atPulse, offsetSec){
     if (!t.buffer || !t.fxChain) return;
     const prevSource = t.source;
     const src = audioCtx.createBufferSource();
@@ -2139,6 +2227,8 @@
     src.loop = true;
     src.connect(t.fxChain.input);
     const now = audioCtx.currentTime;
+    const dur = t.buffer.duration;
+    const offset = mod(offsetSec || 0, dur);
     let startAt = now;
     if (typeof when === 'number'){
       // 予約時刻より実際に音が出るのは出力レイテンシぶん後なので、その分手前に出す
@@ -2151,12 +2241,13 @@
         console.log('[SYNC LOOPER] Loop start missed deadline by', ((now - target)*1000).toFixed(1), 'ms — starting now');
       }
     }
-    src.start(startAt);
+    src.start(startAt, offset);
     // 旧ソースは新ソースの開始時刻ちょうどで止める。即時停止すると
     // 重ね録りの差し替えで一瞬の切れ目ができるため
     if (prevSource){ try{ prevSource.stop(startAt); }catch(e){ try{ prevSource.stop(); }catch(e2){} } }
     t.source = src;
-    t.playStartTime = startAt;
+    // 頭出しをずらしたぶん、再生ヘッドの基準も遡らせておく
+    t.playStartTime = startAt - offset;
     // 予約再生では実際の小節頭のパルスを基準にする(重ね録りの整列基準になるため)
     t.loopStartPulse = (typeof atPulse === 'number') ? atPulse : pulseCount;
     t.state = 'playing';
@@ -2253,9 +2344,13 @@
                       reversed: t.reversed, bars: t.bars, volume: t.volume, muted: t.muted };
       console.log('[SYNC LOOPER] Cleared TRACK', t.id, '— undo available');
     }
+    const hadBuffer = !!t.buffer;
     t.buffer = null; t.originalBuffer = null; t.reversed = false; t.fx.reverse = false;
     t.recAlignRefId = null;
+    t.midiStopped = false; t.midiStopPhase = 0;
     t.state = 'empty';
+    // 全部消えて無音に戻ったらカウントを鳴らし直す
+    if (hadBuffer) updateCountForSilence();
     if (t.id === selectedId) resetTimerDisplay();
     updateTransportUI(); renderTrackList(); renderTimeline(); renderEffectsGrid(); updateStatusLine(t);
     updateUndoUI();
@@ -2357,6 +2452,8 @@
     t.state = 'stopped';
     applyTrackGain(t);
     lastCleared = null;
+    // 録音が戻ったので、無音のあいだ鳴っていたカウントは切る
+    updateCountForSilence();
     updateUndoUI();
     buildTicks(); updateTransportUI(); renderTrackList(); renderTimeline(); renderEffectsGrid();
     showTransportMessage(`TRACK ${t.id} を復元しました。PLAYで再生できます。`);

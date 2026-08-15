@@ -2,7 +2,8 @@
 // フラッシュメトロノームとカウント音源。
 //
 // ・4 つのランプが拍ごとに順に光り、1 拍目だけ赤くなること
-// ・カウントはスタンドアロン時に自動でオンになり、最初の録音が終わると自動でオフ
+// ・カウントはスタンドアロン時、「録音が1本も無い」あいだ鳴る。
+//   最初の録音が終わると自動でオフになり、全部消して無音に戻るとまた鳴り出す
 // ・手動でオンにしたときは、拍の途中ではなく必ず小節の 1 拍目から鳴り始めること
 //   (ループと頭を揃えるため)
 
@@ -62,6 +63,28 @@ module.exports = {
       ctx.check('録音前は鳴っている', during > before, `${during - before} 件`);
       ctx.check('初回録音の完了で自動オフ', switchAfter === false && c2 === c1);
       ctx.check('手動でオンにすると再開する', e2 > e1, `${e2 - e1} 件`);
+
+      // --- 全部消して無音に戻ったら自動で鳴り直す ---
+      await page.click('#countToggle');            // いったん手動でオフに戻す
+      await page.waitForTimeout(200);
+      const beforeClear = await page.$eval('#countToggle', (el) => el.checked);
+      await page.click('#btnClear');               // TRACK A を消して無音へ
+      await page.waitForTimeout(200);
+      const afterClear = await page.$eval('#countToggle', (el) => el.checked);
+      const s1 = await page.evaluate(() => window.__osc.length);
+      await page.waitForTimeout(2500);             // 小節頭を待つぶんを含める
+      const s2 = await page.evaluate(() => window.__osc.length);
+
+      // 取り消して録音が戻れば、また止まること
+      await page.click('#btnUndoClear');
+      await page.waitForTimeout(200);
+      const afterUndo = await page.$eval('#countToggle', (el) => el.checked);
+
+      ctx.info(`消去前=${beforeClear ? 'ON' : 'OFF'} → 消去後=${afterClear ? 'ON' : 'OFF'} ` +
+               `(${s1}→${s2} 件) → CLEAR取消後=${afterUndo ? 'ON' : 'OFF'}`);
+      ctx.check('無音に戻ると自動でオンになり鳴り出す',
+        beforeClear === false && afterClear === true && s2 > s1, `${s2 - s1} 件`);
+      ctx.check('録音が戻れば再び自動でオフ', afterUndo === false);
       await page.close();
     }
 
