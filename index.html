@@ -295,6 +295,22 @@
   .tuner-cents{ font-size:10px; color:var(--ink-dim); min-width:52px; }
   .tuner-hz{ font-size:9px; color:var(--ink-faint); }
 
+  /* 入力レベルメーター */
+  .in-meter{ display:flex; align-items:center; gap:6px; margin-top:var(--gap); font-family:'JetBrains Mono', monospace; font-size:9px; color:var(--ink-dim); }
+  .in-meter-label{ flex:none; letter-spacing:0.1em; }
+  .in-meter-track{ flex:1; height:8px; background:var(--sunk); border:1px solid var(--shell-edge); border-radius:2px; overflow:hidden; box-shadow:inset 0 1px 3px rgba(0,0,0,0.35); }
+  .in-meter-fill{ display:block; height:100%; width:0%; background:linear-gradient(90deg,#4a7a4f 0%,#4a7a4f 65%,#ad7f2b 82%,#9c3a2b 100%); transition:width .05s linear; }
+  .in-meter-clip{ flex:none; width:9px; height:9px; border-radius:2px; border:1px solid var(--shell-edge); background:var(--sunk); }
+  .in-meter-clip.on{ background:var(--red); box-shadow:0 0 6px var(--red); }
+  /* 見出し内の小さな書き出しボタン */
+  .export-btn{
+    float:right; font-family:'JetBrains Mono', monospace; font-size:9px; letter-spacing:0.06em;
+    padding:3px 7px; border-radius:2px; border:1px solid var(--line);
+    background:var(--sunk); color:var(--ink-dim); cursor:pointer; text-transform:none;
+  }
+  .export-btn:disabled{ opacity:0.4; cursor:not-allowed; }
+  #btnUndoClear:disabled{ opacity:0.35; cursor:not-allowed; text-decoration:none; }
+
   .reset-row{ text-align:center; margin-top:var(--gap); display:flex; flex-direction:column; align-items:center; gap:8px; }
   .reset-row button{ background:none; border:none; cursor:pointer; font-family:'JetBrains Mono', monospace; font-size:10px; color:var(--ink-dim); text-decoration:underline; }
   /* 東欧の工業機器風トグルスイッチ。0(切) / I(入) の刻印つき */
@@ -361,7 +377,17 @@
     box-shadow:0 0 4px var(--red);
   }
   .track-playhead.on{ opacity:0.95; }
-  .track-meta{ display:flex; justify-content:space-between; font-family:'JetBrains Mono', monospace; font-size:10px; color:var(--ink-dim); }
+  .track-meta{ display:flex; align-items:center; gap:8px; justify-content:space-between; font-family:'JetBrains Mono', monospace; font-size:10px; color:var(--ink-dim); flex-wrap:wrap; }
+  .track-dur{ flex:none; }
+  /* トラックごとのミキサー(ミュート + 音量) */
+  .track-mix{ display:inline-flex; align-items:center; gap:6px; flex:1; min-width:96px; }
+  .track-mute{
+    flex:none; width:18px; height:16px; border-radius:2px; cursor:pointer;
+    border:1px solid var(--shell-edge); background:var(--sunk); color:var(--ink-dim);
+    font-family:'JetBrains Mono', monospace; font-size:9px; font-weight:700; line-height:1; padding:0;
+  }
+  .track-mute.on{ background:var(--red); border-color:var(--red); color:#f2e4e1; }
+  .track-vol{ flex:1; min-width:56px; height:12px; accent-color:var(--track-color, var(--ink-dim)); cursor:pointer; }
   .track-state-dot{ width:6px; height:6px; border-radius:50%; background:var(--ink-faint); flex:none; }
   .track-state-dot.rec{ background:var(--red); box-shadow:0 0 5px var(--red); }
   .track-state-dot.play{ background:var(--green); box-shadow:0 0 5px var(--green); }
@@ -548,8 +574,15 @@
           </div>
         </div>
 
+        <div class="in-meter" title="入力レベル。赤が点いたら入力が大きすぎます">
+          <span class="in-meter-label">IN</span>
+          <span class="in-meter-track"><span class="in-meter-fill" id="inMeterFill"></span></span>
+          <span class="in-meter-clip" id="inMeterClip"></span>
+        </div>
+
         <div class="reset-row">
           <button id="btnResetBar">小節頭を今にリセット(手動同期)</button>
+          <button id="btnUndoClear" disabled>CLEARを取り消す</button>
           <div class="cal-row">
             <label class="latency-cal" title="録音した音が遅れて聞こえる場合は数値を大きくしてください(入力レイテンシ)">
               録音補正 <input type="number" id="latencyInput" min="0" max="500" step="5" value="0"> ms
@@ -570,7 +603,7 @@
 
       <div class="side-col">
       <div class="card synced-card" id="trackPanelCard">
-        <h2>TRACKS</h2>
+        <h2>TRACKS <button class="export-btn" id="btnExportWav" title="録音済みトラックをWAVファイルとして保存します">WAV書き出し</button></h2>
         <div id="trackList"></div>
         <div class="timeline-caption">波形 — <span id="timelineTrackLabel">TRACK A</span></div>
         <div class="timeline-wrap">
@@ -585,15 +618,15 @@
       <div class="effects-grid" id="effectsGrid">
         <div class="fx-cell" data-fx="reverb">
           <button class="fx-toggle"><div class="fx-dot"></div><div class="fx-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><circle cx="12" cy="12" r="7"></circle><circle cx="12" cy="12" r="11"></circle></svg></div><div class="fx-label">REVERB</div></button>
-          <input type="range" class="fx-amount" min="0" max="100" value="50">
+          <input type="range" class="fx-amount" min="0" max="100" value="25">
         </div>
         <div class="fx-cell" data-fx="delay">
           <button class="fx-toggle"><div class="fx-dot"></div><div class="fx-icon"><svg viewBox="0 0 24 24"><path d="M3 12h4M11 12h4M19 12h2"></path></svg></div><div class="fx-label">DELAY</div></button>
-          <input type="range" class="fx-amount" min="0" max="100" value="50">
+          <input type="range" class="fx-amount" min="0" max="100" value="25">
         </div>
         <div class="fx-cell" data-fx="filter">
           <button class="fx-toggle"><div class="fx-dot"></div><div class="fx-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="2.4"></circle></svg></div><div class="fx-label">FILTER</div></button>
-          <input type="range" class="fx-amount" min="0" max="100" value="50">
+          <input type="range" class="fx-amount" min="0" max="100" value="25">
         </div>
         <div class="fx-cell" data-fx="reverse">
           <button class="fx-toggle"><div class="fx-dot"></div><div class="fx-icon"><svg viewBox="0 0 24 24"><path d="M4 8l-2 4 2 4M20 8l2 4-2 4" stroke-linecap="round" stroke-linejoin="round"></path></svg></div><div class="fx-label">REVERSE</div></button>
@@ -601,7 +634,7 @@
         </div>
         <div class="fx-cell" data-fx="tape">
           <button class="fx-toggle"><div class="fx-dot"></div><div class="fx-icon"><svg viewBox="0 0 24 24"><circle cx="7" cy="12" r="4"></circle><circle cx="17" cy="12" r="4"></circle></svg></div><div class="fx-label">TAPE</div></button>
-          <input type="range" class="fx-amount" min="0" max="100" value="50">
+          <input type="range" class="fx-amount" min="0" max="100" value="25">
         </div>
       </div>
         <div class="fx-caption">エフェクトは選択中トラックに個別にかかります</div>
@@ -634,10 +667,10 @@
 
 <script>
 (() => {
-  const APP_VERSION = 'v18';
+  const APP_VERSION = 'v20';
   // デプロイのたびに APP_VERSION / sw.js の CACHE_NAME と一緒に更新する。
   // UTCで持ち、表示時に閲覧者のローカル時刻へ変換する(時差の誤解を避けるため)
-  const APP_BUILT_AT = '2026-08-08T02:41:00Z';
+  const APP_BUILT_AT = '2026-08-12T17:03:00Z';
   console.log('[SYNC LOOPER] Script init start. Version:', APP_VERSION);
   window.addEventListener('error', (e) => {
     console.error('[SYNC LOOPER] window error event:', e.message, e.error);
@@ -682,6 +715,10 @@
     btnStop: document.getElementById('btnStop'),
     btnClear: document.getElementById('btnClear'),
     btnResetBar: document.getElementById('btnResetBar'),
+    btnUndoClear: document.getElementById('btnUndoClear'),
+    btnExportWav: document.getElementById('btnExportWav'),
+    inMeterFill: document.getElementById('inMeterFill'),
+    inMeterClip: document.getElementById('inMeterClip'),
     latencyInput: document.getElementById('latencyInput'),
     playbackInput: document.getElementById('playbackInput'),
     inputChannelSelect: document.getElementById('inputChannelSelect'),
@@ -734,7 +771,7 @@
 
   let midiAccess = null, midiInput = null;
   let audioCtx = null, micStream = null, sourceNode = null, workletNode = null, destNode = null, masterGain = null;
-  let captureNode = null, tunerAnalyser = null;
+  let captureNode = null, tunerAnalyser = null, inputAnalyser = null, inputBuf = null;
 
   let clockTimestamps = [];
   let pulseCount = 0;
@@ -860,11 +897,36 @@
     loopStartPulse:0, recAlignRefId:null, recAlignRefLen:0, recAlignRefStart:0,
     fx:{ reverb:false, delay:false, filter:false, reverse:false, tape:false },
     fxPending:{ reverb:null, delay:null, filter:null, reverse:null, tape:null },
-    fxAmount:{ reverb:50, delay:50, filter:50, tape:50 },
-    fxChain:null
+    fxAmount:{ reverb:25, delay:25, filter:25, tape:25 },
+    fxChain:null, gainNode:null, volume:80, muted:false,
+    overdubArmed:false, overdubbing:false
   }));
   let selectedId = 'A';
   const getSelected = () => tracks.find(t => t.id === selectedId);
+
+  // ---------- トラック音量 / ミュート ----------
+  function trackGainValue(t){
+    return t.muted ? 0 : (t.volume / 100);
+  }
+  // クリックノイズを避けるため短いランプで変化させる
+  function applyTrackGain(t){
+    if (!t.gainNode || !audioCtx) return;
+    const g = t.gainNode.gain;
+    g.cancelScheduledValues(audioCtx.currentTime);
+    g.setTargetAtTime(trackGainValue(t), audioCtx.currentTime, 0.008);
+  }
+  function setTrackVolume(t, v){
+    t.volume = Math.min(100, Math.max(0, isFinite(v) ? v : 80));
+    applyTrackGain(t);
+  }
+  function toggleTrackMute(trackId){
+    const t = tracks.find(x => x.id === trackId);
+    if (!t) return;
+    t.muted = !t.muted;
+    applyTrackGain(t);
+    console.log('[SYNC LOOPER] Track', t.id, t.muted ? 'muted' : 'unmuted');
+    renderTrackList();
+  }
 
   // 録音バッファは全トラック共有のため、録音は同時に1トラックのみ。
   let recordingTrackId = null;
@@ -976,7 +1038,7 @@
     console.log('[SYNC LOOPER] Input channel selection:', els.inputChannelSelect.value);
   });
 
-  els.countToggle.addEventListener('change', () => setCountEnabled(els.countToggle.checked));
+  els.countToggle.addEventListener('change', () => setCountEnabled(els.countToggle.checked, true));
 
   // ---------- チューナーの開始/停止 ----------
   els.tunerToggle.addEventListener('change', () => {
@@ -1082,6 +1144,35 @@
     return filled > 0 ? out : null;
   }
 
+  // 2つのバッファを加算する。長さは合わせてある前提で、短い方に合わせて足す。
+  // 合計が振り切れないよう、必要なときだけ全体を下げる。
+  function mixBuffers(a, b){
+    const len = Math.min(a.length, b.length);
+    const numCh = Math.max(a.numberOfChannels, b.numberOfChannels);
+    const out = audioCtx.createBuffer(numCh, len, a.sampleRate);
+    let peak = 0;
+    for (let ch=0; ch<numCh; ch++){
+      const src1 = a.getChannelData(Math.min(ch, a.numberOfChannels-1));
+      const src2 = b.getChannelData(Math.min(ch, b.numberOfChannels-1));
+      const dst = out.getChannelData(ch);
+      for (let i=0;i<len;i++){
+        const v = src1[i] + src2[i];
+        dst[i] = v;
+        const av = Math.abs(v);
+        if (av > peak) peak = av;
+      }
+    }
+    if (peak > 1){
+      const g = 1 / peak;
+      console.log('[SYNC LOOPER] Overdub peak', peak.toFixed(2), '— scaling by', g.toFixed(3));
+      for (let ch=0; ch<numCh; ch++){
+        const dst = out.getChannelData(ch);
+        for (let i=0;i<len;i++) dst[i] *= g;
+      }
+    }
+    return out;
+  }
+
   // バッファを左へ回転して位相を合わせる。
   // 「切り出し窓を後ろへずらす」のと同じ結果になるが、まだ録れていない未来を
   // 待たずに済む(ループは周期的なので、はみ出した先頭は末尾へ回して問題ない)。
@@ -1103,8 +1194,11 @@
     switch (t.state){
       case 'playing':    return { line:`TRACK ${t.id} ループ再生中`, tag:'PLAY' };
       case 'stopped':    return { line:`TRACK ${t.id} 停止中 — PLAYで再生 / CLEARで削除`, tag:'STOP' };
-      case 'recording':  return { line:`TRACK ${t.id} 録音中 — ${t.bars}小節`, tag:'REC' };
-      case 'rec-armed':  return { line: t.recAlignRefId
+      case 'recording':  return t.overdubbing
+                             ? { line:`TRACK ${t.id} 重ね録り中 — ${t.bars}小節`, tag:'OVER' }
+                             : { line:`TRACK ${t.id} 録音中 — ${t.bars}小節`, tag:'REC' };
+      case 'rec-armed':  if (t.overdubArmed) return { line:`TRACK ${t.id} 重ね録り待機中 — 次の周回頭で開始します`, tag:'ARMED' };
+                         return { line: t.recAlignRefId
                                     ? `TRACK ${t.id} 録音待機中 — TRACK ${t.recAlignRefId} の周回頭で開始します`
                                     : `TRACK ${t.id} 録音待機中 — 次の小節頭で開始します`, tag:'ARMED' };
       case 'play-armed': return { line:`TRACK ${t.id} 再生待機中 — 次の小節頭で開始します`, tag:'ARMED' };
@@ -1302,9 +1396,22 @@
         els.midiSelect.disabled = false;
       } else {
         console.log('[SYNC LOOPER] requestMIDIAccess start');
-        midiAccess = await navigator.requestMIDIAccess({sysex:false});
-        console.log('[SYNC LOOPER] requestMIDIAccess success', midiAccess);
-        const midiIns = Array.from(midiAccess.inputs.values());
+        // 権限プロンプトが放置されると永久に待ち続け、設定画面から進めなくなる。
+        // 一定時間で諦めてMIDIなしとして先へ進めるようにする。
+        const MIDI_TIMEOUT_MS = 8000;
+        midiAccess = await Promise.race([
+          navigator.requestMIDIAccess({sysex:false}),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('MIDI_TIMEOUT')), MIDI_TIMEOUT_MS)),
+        ]).catch((err) => {
+          if (err && err.message === 'MIDI_TIMEOUT'){
+            console.error('[SYNC LOOPER] requestMIDIAccess timed out after', MIDI_TIMEOUT_MS, 'ms');
+            showError('MIDIの使用許可が確認できませんでした。MIDIなしで続けます(スタンドアロンモードをお使いください)。');
+            return null;
+          }
+          throw err;
+        });
+        console.log('[SYNC LOOPER] requestMIDIAccess result', midiAccess);
+        const midiIns = midiAccess ? Array.from(midiAccess.inputs.values()) : [];
         console.log('[SYNC LOOPER] MIDI input count=', midiIns.length, midiIns.map(m => m.name));
         const noneOption = { value:'', label:'なし(MIDIを使わない)' };
         fillSelect(els.midiSelect, [noneOption, ...midiIns.map(m => ({ value:m.id, label:m.name }))]);
@@ -1340,7 +1447,7 @@
       els.performPanel.classList.remove('hidden');
       estimateLatencyOffset();
       estimatePlaybackOffset();
-      setCountEnabled(syncMode === 'standalone');
+      setCountEnabled(syncMode === 'standalone', false);
       requestWakeLock();
       updateBpmModeUI();
       if (syncMode === 'standalone'){
@@ -1533,6 +1640,18 @@
 
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     captureGuardSamples = Math.round(CAPTURE_GUARD_SEC * audioCtx.sampleRate);
+    // OSやブラウザにコンテキストを止められると無音のまま戻らなくなるため、
+    // 状態変化を監視して自動で復帰を試みる
+    audioCtx.onstatechange = () => {
+      console.log('[SYNC LOOPER] AudioContext state:', audioCtx.state);
+      if (audioCtx.state === 'suspended'){
+        showTransportMessage('オーディオが停止しました。復帰を試みています…');
+        audioCtx.resume().then(
+          () => showTransportMessage('オーディオが復帰しました。'),
+          (e) => console.error('[SYNC LOOPER] resume failed', e)
+        );
+      }
+    };
     sourceNode = audioCtx.createMediaStreamSource(micStream);
 
     // currentFrame(オーディオスレッド上のサンプル位置)を一緒に送る。
@@ -1575,11 +1694,21 @@
     tunerAnalyser.fftSize = 2048;
     captureNode.connect(tunerAnalyser);
 
+    // 入力レベルメーター用(チューナーとは独立。常時動かす)
+    inputAnalyser = audioCtx.createAnalyser();
+    inputAnalyser.fftSize = 1024;
+    inputBuf = new Float32Array(inputAnalyser.fftSize);
+    captureNode.connect(inputAnalyser);
+
     // ---- per-track effects chains + shared master sum ----
     masterGain = audioCtx.createGain();
     tracks.forEach(t => {
       t.fxChain = buildTrackFxChain();
-      t.fxChain.output.connect(masterGain);
+      // トラックごとの音量/ミュート段。FXの後、マスターの手前に入れる
+      t.gainNode = audioCtx.createGain();
+      t.gainNode.gain.value = trackGainValue(t);
+      t.fxChain.output.connect(t.gainNode);
+      t.gainNode.connect(masterGain);
       applyTrackFx(t, 'reverb'); applyTrackFx(t, 'delay'); applyTrackFx(t, 'filter'); applyTrackFx(t, 'tape');
     });
 
@@ -1664,10 +1793,15 @@
   // 初期状態ではスタンドアロン時のみオンにし、最初の録音が終わると自動でオフに倒す
   // (ループができればそれ自体がテンポの基準になるため)。以後は任意でオンにできる。
   let countEnabled = false;
-  function setCountEnabled(on){
+  // オンにした直後は次の小節頭が来るまで鳴らさないためのフラグ
+  let countPendingStart = false;
+  // alignToBar=true で「次の小節頭まで待ってから鳴らし始める」。
+  // 演奏中に手で入れたとき、拍の途中から鳴き出してループと頭がずれないようにする。
+  function setCountEnabled(on, alignToBar){
     countEnabled = !!on;
+    countPendingStart = !!(on && alignToBar);
     els.countToggle.checked = countEnabled;
-    console.log('[SYNC LOOPER] Count-in:', countEnabled);
+    console.log('[SYNC LOOPER] Count-in:', countEnabled, countPendingStart ? '(次の小節頭から)' : '');
   }
   function shouldCountIn(){
     return countEnabled && audioCtx && clickGain;
@@ -1691,6 +1825,11 @@
     if (mod(pulseCount, PPQ) !== PPQ - 1) return;
     const nextPulse = pulseCount + 1;
     const beat = Math.floor(mod(nextPulse, PULSES_PER_BAR) / PPQ);
+    // 小節頭を待っている間は鳴らさない(1拍目から始めてループと頭を揃える)
+    if (countPendingStart){
+      if (beat !== 0) return;
+      countPendingStart = false;
+    }
     playClick(audioCtx.currentTime + secondsPerPulse(), beat === 0);
   }
 
@@ -1698,6 +1837,10 @@
   // (UIで「TRACK X の周回頭で開始します」と案内しているのに、実際は最短の小節頭で
   //  開始してしまい、長いループへの重ね録りがずれていた)
   function isRecStartBoundary(t, barBoundary){
+    // 重ね録りは、そのトラック自身のループ周回頭でしか始められない
+    if (t.overdubArmed){
+      return mod(pulseCount - t.loopStartPulse, t.bars * PULSES_PER_BAR) === 0;
+    }
     if (!t.recAlignRefId || !t.recAlignRefLen) return barBoundary;
     const ref = tracks.find(tr => tr.id === t.recAlignRefId);
     // 参照トラックが停止/削除されていたら通常の小節頭にフォールバック
@@ -1708,6 +1851,7 @@
   function handleClockPulse(){
     if (syncMode === 'external'){
       const now = performance.now();
+      lastClockPulseAt = now;
       clockTimestamps.push(now);
       if (clockTimestamps.length > 48) clockTimestamps.shift();
       updateBpm();
@@ -1786,8 +1930,13 @@
     // 手前から切り出し、レイテンシ補正と合わせて後段の回転で位相を合わせる
     t.recStartFrame = Math.round(audioCtx.currentTime * sr) - captureGuardSamples;
     t.recLatencySamples = Math.round(latencyOffsetMs / 1000 * sr);
-    // ループ長はチャンク数ではなくテンポから決める(これをしないと周回ごとにずれる)
-    t.recTargetSamples = Math.round(t.bars * PULSES_PER_BAR * secondsPerPulse() * sr);
+    t.overdubbing = t.overdubArmed;
+    t.overdubArmed = false;
+    // ループ長はチャンク数ではなくテンポから決める(これをしないと周回ごとにずれる)。
+    // 重ね録りのときは既存バッファと1サンプルも違わない長さにする。
+    t.recTargetSamples = t.overdubbing && t.buffer
+      ? t.buffer.length
+      : Math.round(t.bars * PULSES_PER_BAR * secondsPerPulse() * sr);
     // ループ再生を始めるべき正確なオーディオクロック時刻。
     // src.start() に渡してオーディオスレッド側で開始させる(メインスレッドの
     // 到着ジッタやバッファ組み立て時間の影響を受けないようにするため)
@@ -1840,7 +1989,15 @@
       }
     }
 
-    const buffer = rotateBufferLeft(raw, rotation);
+    let buffer = rotateBufferLeft(raw, rotation);
+
+    if (t.overdubbing && t.originalBuffer){
+      // 既存のループに重ねる。長さは録音開始時に合わせてあるので単純に加算できる
+      buffer = mixBuffers(t.originalBuffer, buffer);
+      t.overdubbing = false;
+      console.log('[SYNC LOOPER] Overdub merged into TRACK', t.id);
+    }
+
     t.buffer = buffer;
     t.originalBuffer = buffer;
     t.reversed = false;
@@ -1861,7 +2018,7 @@
   // 省略時は即時開始。
   function startPlayback(t, when, atPulse){
     if (!t.buffer || !t.fxChain) return;
-    if (t.source){ try{ t.source.stop(); }catch(e){} }
+    const prevSource = t.source;
     const src = audioCtx.createBufferSource();
     src.buffer = t.buffer;
     src.loop = true;
@@ -1880,6 +2037,9 @@
       }
     }
     src.start(startAt);
+    // 旧ソースは新ソースの開始時刻ちょうどで止める。即時停止すると
+    // 重ね録りの差し替えで一瞬の切れ目ができるため
+    if (prevSource){ try{ prevSource.stop(startAt); }catch(e){ try{ prevSource.stop(); }catch(e2){} } }
     t.source = src;
     t.playStartTime = startAt;
     // 予約再生では実際の小節頭のパルスを基準にする(重ね録りの整列基準になるため)
@@ -1901,19 +2061,28 @@
     if (targetId && targetId !== selectedId) selectTrack(targetId);
     const t = getSelected();
     if (t.state === 'rec-armed'){
-      t.state = t.buffer ? 'stopped' : 'empty';
+      // 重ね録りの待機を取り消した場合は再生中に戻す
+      t.state = t.overdubArmed ? 'playing' : (t.buffer ? 'stopped' : 'empty');
+      t.overdubArmed = false;
       t.recAlignRefId = null;
       updateTransportUI(); renderTrackList(); updateStatusLine(t);
       return;
     }
-    if (!(t.state === 'empty' || t.state === 'stopped')) return;
+    const isOverdub = (t.state === 'playing' && !!t.buffer);
+    if (!(t.state === 'empty' || t.state === 'stopped' || isOverdub)) return;
     if (!running){ showTransportMessage('クロックが動作していません。接続設定を確認してください。'); return; }
+    if (isOverdub && t.reversed){
+      // 逆再生中は聞こえている音と元データの時間軸が逆なので、正しく混ざらない
+      showTransportMessage('REVERSE中は重ね録りできません。REVERSEを解除してください。');
+      return;
+    }
     // 録音バッファは全トラック共有のため、同時録音は受け付けない
     const busy = tracks.find(tr => tr.id !== t.id && (tr.state === 'recording' || tr.state === 'rec-armed'));
     if (busy){ showTransportMessage(`TRACK ${busy.id} が録音中/録音待機中です。先にそちらを終えてください。`); return; }
 
     // 他に再生中のトラックがあれば、その中で最も長いループの周回頭(小節1拍目に戻る瞬間)まで待つ
-    const playingTracks = tracks.filter(tr => tr.state === 'playing' && tr.id !== t.id);
+    // (重ね録りは自分自身の周回頭に合わせるので対象外)
+    const playingTracks = isOverdub ? [] : tracks.filter(tr => tr.state === 'playing' && tr.id !== t.id);
     if (playingTracks.length > 0){
       const ref = playingTracks.reduce((a,b) => (b.bars > a.bars ? b : a));
       t.recAlignRefId = ref.id;
@@ -1923,6 +2092,7 @@
       t.recAlignRefId = null;
     }
 
+    t.overdubArmed = isOverdub;
     t.state = 'rec-armed';
     updateTransportUI(); renderTrackList(); updateStatusLine(t);
   }
@@ -1961,11 +2131,117 @@
     // 録音中のトラックを消したら録音も打ち切る
     if (recordingTrackId === t.id) recordingTrackId = null;
     if (t.recPrepTimer){ clearTimeout(t.recPrepTimer); t.recPrepTimer = null; }
+    t.overdubArmed = false; t.overdubbing = false;
+    // 誤爆に備えて直前に消した1本だけ保持する
+    if (t.buffer){
+      lastCleared = { id: t.id, buffer: t.buffer, originalBuffer: t.originalBuffer,
+                      reversed: t.reversed, bars: t.bars, volume: t.volume, muted: t.muted };
+      console.log('[SYNC LOOPER] Cleared TRACK', t.id, '— undo available');
+    }
     t.buffer = null; t.originalBuffer = null; t.reversed = false; t.fx.reverse = false;
     t.recAlignRefId = null;
     t.state = 'empty';
     if (t.id === selectedId) resetTimerDisplay();
     updateTransportUI(); renderTrackList(); renderTimeline(); renderEffectsGrid(); updateStatusLine(t);
+    updateUndoUI();
+  }
+
+  // ---------- 入力レベルメーター ----------
+  let inPeakHold = 0, inClipUntil = 0;
+  function updateInputMeter(){
+    if (!inputAnalyser || !inputBuf) return;
+    inputAnalyser.getFloatTimeDomainData(inputBuf);
+    let peak = 0;
+    for (let i=0;i<inputBuf.length;i++){ const v = Math.abs(inputBuf[i]); if (v > peak) peak = v; }
+    // 落ちるときだけゆっくりにして目で追えるようにする
+    inPeakHold = peak > inPeakHold ? peak : inPeakHold * 0.88;
+    const now = performance.now();
+    if (peak >= 0.99) inClipUntil = now + 1200;    // クリップは1.2秒保持
+    els.inMeterFill.style.width = Math.min(100, Math.sqrt(inPeakHold) * 100) + '%';
+    els.inMeterClip.classList.toggle('on', now < inClipUntil);
+  }
+
+  // ---------- 外部クロックの断線検出 ----------
+  // 0xFC(Stop)は処理しているが、ケーブルが抜けた場合はパルスが来なくなるだけで
+  // running が立ったままになる。一定時間途切れたら止まったものとして扱う。
+  let lastClockPulseAt = 0;
+  const CLOCK_TIMEOUT_MS = 1500;
+  function checkClockWatchdog(){
+    if (syncMode !== 'external' || !running || !lastClockPulseAt) return;
+    if (performance.now() - lastClockPulseAt < CLOCK_TIMEOUT_MS) return;
+    running = false;
+    setSyncUI(false);
+    clockTimestamps = [];
+    showTransportMessage('MIDIクロックが途切れました。接続を確認してください。');
+    console.error('[SYNC LOOPER] External clock lost (no pulse for', CLOCK_TIMEOUT_MS, 'ms)');
+  }
+
+  // ---------- WAV 書き出し ----------
+  function encodeWav(buffer){
+    const numCh = buffer.numberOfChannels, len = buffer.length, sr = buffer.sampleRate;
+    const bytes = 44 + len * numCh * 2;
+    const view = new DataView(new ArrayBuffer(bytes));
+    const str = (off, sVal) => { for (let i=0;i<sVal.length;i++) view.setUint8(off+i, sVal.charCodeAt(i)); };
+    str(0,'RIFF'); view.setUint32(4, bytes-8, true); str(8,'WAVE');
+    str(12,'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+    view.setUint16(22, numCh, true); view.setUint32(24, sr, true);
+    view.setUint32(28, sr*numCh*2, true); view.setUint16(32, numCh*2, true); view.setUint16(34, 16, true);
+    str(36,'data'); view.setUint32(40, len*numCh*2, true);
+    const chans = [];
+    for (let ch=0; ch<numCh; ch++) chans.push(buffer.getChannelData(ch));
+    let off = 44;
+    for (let i=0;i<len;i++){
+      for (let ch=0; ch<numCh; ch++){
+        const v = Math.max(-1, Math.min(1, chans[ch][i]));
+        view.setInt16(off, v < 0 ? v*0x8000 : v*0x7FFF, true);
+        off += 2;
+      }
+    }
+    return new Blob([view], { type:'audio/wav' });
+  }
+  function exportTracksAsWav(){
+    const recorded = tracks.filter(t => t.buffer);
+    if (!recorded.length){ showTransportMessage('書き出せる録音がありません。'); return; }
+    const stamp = new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
+    for (const t of recorded){
+      const url = URL.createObjectURL(encodeWav(t.buffer));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `loop-console_${stamp}_TRACK-${t.id}.wav`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    }
+    showTransportMessage(`${recorded.length}トラックをWAVで書き出しました。`);
+    console.log('[SYNC LOOPER] Exported', recorded.length, 'track(s) as WAV');
+  }
+
+  // ---------- CLEAR の取り消し ----------
+  // 直前に消した1本だけ復元できる。ライブ中の誤爆でテイクを失わないための保険。
+  let lastCleared = null;
+
+  function updateUndoUI(){
+    const t = lastCleared && tracks.find(x => x.id === lastCleared.id);
+    // 復元先に新しい録音が入っている場合は上書きになるので受け付けない
+    els.btnUndoClear.disabled = !(lastCleared && t && !t.buffer);
+  }
+  function undoClear(){
+    if (!lastCleared) return;
+    const t = tracks.find(x => x.id === lastCleared.id);
+    if (!t || t.buffer){ showTransportMessage('復元先に別の録音があるため戻せません。'); return; }
+    t.buffer = lastCleared.buffer;
+    t.originalBuffer = lastCleared.originalBuffer;
+    t.reversed = lastCleared.reversed;
+    t.fx.reverse = lastCleared.reversed;
+    t.bars = lastCleared.bars;
+    t.volume = lastCleared.volume;
+    t.muted = lastCleared.muted;
+    t.state = 'stopped';
+    applyTrackGain(t);
+    lastCleared = null;
+    updateUndoUI();
+    buildTicks(); updateTransportUI(); renderTrackList(); renderTimeline(); renderEffectsGrid();
+    showTransportMessage(`TRACK ${t.id} を復元しました。PLAYで再生できます。`);
+    console.log('[SYNC LOOPER] Undo clear: restored TRACK', t.id);
   }
 
   // 全トラックを即座に停止(クオンタイズなし・緊急停止)
@@ -1973,6 +2249,7 @@
     tracks.forEach(tr => {
       if (tr.source){ try{ tr.source.stop(); }catch(e){} tr.source = null; }
       if (tr.recPrepTimer){ clearTimeout(tr.recPrepTimer); tr.recPrepTimer = null; }
+      tr.overdubArmed = false; tr.overdubbing = false;
       if (tr.state === 'recording' || tr.state === 'playing' || ARMED_STATES.includes(tr.state)){
         tr.state = tr.buffer ? 'stopped' : 'empty';
       }
@@ -1987,6 +2264,8 @@
     console.log('[SYNC LOOPER] PANIC: all tracks stopped immediately');
   }
   els.btnPanic.addEventListener('click', () => onControlActivate('panic', panicStopAll));
+  els.btnUndoClear.addEventListener('click', () => onControlActivate('undoClear', undoClear));
+  els.btnExportWav.addEventListener('click', (e) => { e.stopPropagation(); exportTracksAsWav(); });
 
   function selectTrack(id){
     selectedId = id;
@@ -2102,15 +2381,39 @@
             <div class="track-mini-bars" style="--loop-pct:${(segmentsPerLoop(t)/MINI_SEGMENTS*100).toFixed(4)}%">${trackMiniBars(t)}<span class="track-playhead" data-ph="${t.id}"></span></div>
             <div class="track-meta">
               <span><span class="track-state-dot ${dotClass}"></span> ${label}</span>
-              <span>${dur}</span>
+              <span class="track-mix">
+                <button class="track-mute ${t.muted?'on':''}" data-mute="${t.id}" title="ミュート">M</button>
+                <input type="range" class="track-vol" data-vol="${t.id}" min="0" max="100" step="1" value="${t.volume}" title="音量 ${t.volume}%">
+              </span>
+              <span class="track-dur">${dur}</span>
             </div>
           </div>
         </div>`;
     }).join('');
     [...els.trackList.querySelectorAll('.track-row')].forEach(row => {
       const id = row.dataset.track;
-      row.addEventListener('click', () => onControlActivate('track:'+id, () => selectTrack(id)));
+      row.addEventListener('click', (e) => {
+        // ミキサー操作でトラック選択が走らないようにする
+        if (e.target.closest('.track-mix')) return;
+        onControlActivate('track:'+id, () => selectTrack(id));
+      });
     });
+    for (const btn of els.trackList.querySelectorAll('.track-mute')){
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.mute;
+        onControlActivate('mute:'+id, () => toggleTrackMute(id));
+      });
+    }
+    for (const sl of els.trackList.querySelectorAll('.track-vol')){
+      sl.addEventListener('input', (e) => {
+        e.stopPropagation();
+        const t = tracks.find(x => x.id === sl.dataset.vol);
+        if (!t) return;
+        setTrackVolume(t, parseInt(sl.value, 10));
+        sl.title = `音量 ${t.volume}%`;
+      });
+    }
   }
 
   // ---------- effects ----------
@@ -2472,6 +2775,8 @@
       els.playhead.classList.add('hidden');
     }
     updateTrackPlayheads();
+    updateInputMeter();
+    checkClockWatchdog();
     requestAnimationFrame(playheadLoop);
   }
 
@@ -2481,6 +2786,11 @@
   renderMappingsList();
   renderKeyMappingsList();
   console.log('[SYNC LOOPER] Initial render complete. App ready.');
+
+  // 自動復帰がユーザー操作を要求される環境向けの受け皿
+  document.addEventListener('pointerdown', () => {
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{});
+  });
 
   // ---------- 誤操作防止: 未保存の録音がある状態でのタブ離脱を警告 ----------
   function hasActiveSessionContent(){
