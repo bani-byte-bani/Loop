@@ -69,6 +69,12 @@ const SIGNALS = {
   quarterPattern(periodSec = 0.5, freq = 300) {
     return { kind: 'quarters', periodSec, freq };
   },
+  // 周波数が上がり続ける掃引音。折り返さないので、周波数がそのまま
+  // 「いつの音か」を表す。末尾が録音開始より前の音にすり替わっていれば
+  // 末尾の周波数が先頭より低くなるので、符号の反転として明確に判る。
+  risingChirp(startHz = 200, ratePerSec = 100, seconds = 120) {
+    return { kind: 'chirp', startHz, ratePerSec, seconds };
+  },
   // L だけに音を入れる。入力チャンネル選択が効いているかの確認に使う
   leftOnly(freq = 440) {
     return { kind: 'leftOnly', freq };
@@ -107,6 +113,14 @@ function installSignal(spec) {
       silent.connect(merger, 0, 1);
       merger.connect(dest);
       osc.start(); other.start();
+    } else if (spec.kind === 'chirp') {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      g.gain.value = 0.5;
+      osc.frequency.setValueAtTime(spec.startHz, ctx.currentTime);
+      osc.frequency.linearRampToValueAtTime(
+        spec.startHz + spec.ratePerSec * spec.seconds, ctx.currentTime + spec.seconds);
+      osc.connect(g); g.connect(dest); osc.start();
     } else if (spec.kind === 'burst' || spec.kind === 'quarters') {
       const period = Math.round(sr * spec.periodSec);
       const buf = ctx.createBuffer(1, period, sr);
@@ -306,7 +320,31 @@ async function jumpNear(page, index, radius = 512) {
   }, { index, radius });
 }
 
+/**
+ * 直近の録音バッファを segments 等分し、各区間の周波数(Hz)をゼロ交差から推定して返す。
+ * 掃引音と組み合わせると「その区間がいつの音か」が判る。
+ */
+async function segmentFreq(page, segments = 20) {
+  return page.evaluate((n) => {
+    const added = window.__bufs.slice(window.__mark);
+    const maxLen = Math.max(...added.map((b) => b.length));
+    const buf = added.filter((b) => b.length === maxLen).pop();
+    const d = buf.getChannelData(0);
+    const out = [];
+    for (let k = 0; k < n; k++) {
+      const from = Math.floor(d.length * k / n), to = Math.floor(d.length * (k + 1) / n);
+      let crossings = 0;
+      for (let i = from + 1; i < to; i++) {
+        if ((d[i - 1] < 0 && d[i] >= 0) || (d[i - 1] >= 0 && d[i] < 0)) crossings++;
+      }
+      const secs = (to - from) / buf.sampleRate;
+      out.push(crossings / 2 / secs);
+    }
+    return out;
+  }, segments);
+}
+
 module.exports = {
   launchBrowser, openApp, connectApp, recordTrack,
-  markBuffers, latestRecordedBuffer, jumpNear, SIGNALS,
+  markBuffers, latestRecordedBuffer, jumpNear, segmentFreq, SIGNALS,
 };

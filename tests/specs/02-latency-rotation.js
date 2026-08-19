@@ -1,32 +1,29 @@
 'use strict';
-// 録音補正が「意図した量だけ」バッファを回転させているかを確かめる。
+// 録音補正が「意図した量だけ」バッファをずらしているかを確かめる。
 //
-// 補正は切り出したバッファを左回転して位相を合わせる方式なので、
-// 回転量ぶんの位置に波形の継ぎ目(不連続点)ができる。
-// その位置に継ぎ目があることを見れば、回転量を外から検証できる。
+// 1周目は締切より前に組み立てる必要があるため、まだ取り込めていない末尾のぶんだけ
+// 切り出し窓を過去へずらし、その量を左回転で戻している。回転させた位置には
+// 波形の継ぎ目(不連続点)ができるので、その位置を測ればずらし量を検証できる。
 //
-// 検証用の信号について(SIGNALS.spliceProbe):
-//  ・440Hz は使えない。2 秒バッファに 880 周期ちょうど収まるため、回転しても
-//    波形が連続のままで継ぎ目が出ない。非整数周期になる周波数を使う。
-//  ・周波数の違う 2 音を足している。単一の正弦波だと継ぎ目前後の位相が
-//    たまたま近いときに段差が消え、判定が運任せになる。
+// 回転量 = (まだ取り込めていない量) + (録音補正)
+// 前者は実行ごとに変わるのでアプリのログから読み取り、後者はテストが指定した値を使う。
+// これで「録音補正が意図した量だけ効いているか」を切り分けて確かめられる。
 //
-// 判定について:
-//  ・「全体で最大の段差」を探してはいけない。テスト側の合成音は MediaStream の
-//    10ms フレームで運ばれ、負荷が高いとフレームごと飛ばされる。飛んだ箇所にも
-//    不連続ができるので、全体最大はそちらを拾うことがある(実際に -20908 サンプル
-//    ずれた位置を拾って落ちた)。期待位置の近傍だけを見る。
-//  ・クリーンな信号が取りうる隣接サンプル差には上限(各成分の最大傾きの和)が
-//    あるので、それを超えていればそこに不連続があると断定できる。
+// さらに、取り込みが追いついた後の差し替えで継ぎ目が消えることも確認する。
+// 差し替え後は回転の要らない窓で切り直すので、ループ内に不連続点は残らない。
+//
+// 検証用信号について(SIGNALS.spliceProbe):
+//  ・440Hz は使えない。2秒バッファに880周期ちょうど収まり、回転しても連続のまま。
+//  ・周波数の違う2音を足している。単音だと継ぎ目前後の位相がたまたま近いときに
+//    段差が消え、判定が運任せになる。
+//  ・継ぎ目は「全体の最大段差」で探してはいけない。MediaStream のフレーム落ちが
+//    起きた箇所にも不連続ができるため。期待位置の近傍だけを見る(jumpNear)。
 
 const { openApp, connectApp, recordTrack, markBuffers, latestRecordedBuffer,
         jumpNear, SIGNALS } = require('../lib/harness');
 
-// index.html の CAPTURE_GUARD_SEC と揃える(取りこぼし防止の先読み。回転で相殺される)
-const CAPTURE_GUARD_SEC = 0.6;
-
 module.exports = {
-  name: 'レイテンシ補正の回転量',
+  name: 'レイテンシ補正のずらし量',
   async run(ctx) {
     for (const offsetMs of [0, 100, 200]) {
       const page = await openApp(ctx.browser, ctx.baseUrl, {
@@ -38,23 +35,39 @@ module.exports = {
       await markBuffers(page);
       await recordTrack(page, 'A', 1);   // 1小節 @120BPM = 2秒
 
+      // 差し替えが走る前に、回転済みの1周目を見る
       const buf = await latestRecordedBuffer(page);
-      const guard = Math.round(CAPTURE_GUARD_SEC * buf.sampleRate);
-      const expectedRotation = guard + Math.round(offsetMs / 1000 * buf.sampleRate);
-      const expectedSplice = buf.length - expectedRotation;
+      const maxSlope = SIGNALS.spliceProbeMaxSlope(buf.sampleRate);
+
+      // まだ取り込めていなかった量はアプリのログに出る
+      const line = page.consoleLogs.find((l) => l.includes('Tail not yet captured'));
+      const deficit = parseInt((line || '').match(/captured: (\d+)/)?.[1] ?? '-1', 10);
+      const rotation = deficit + Math.round(offsetMs / 1000 * buf.sampleRate);
+      const expectedSplice = buf.length - rotation;
 
       const near = await jumpNear(page, expectedSplice, 512);
-      const maxSlope = SIGNALS.spliceProbeMaxSlope(buf.sampleRate);
       const ratio = near.jump / maxSlope;
       const diff = near.at - expectedSplice;
 
-      ctx.info(`補正 ${offsetMs}ms: 期待位置 ${expectedSplice} の近傍で ` +
-               `継ぎ目 ${near.at} (ずれ ${diff}) / 段差 ${near.jump.toFixed(3)} ` +
-               `= 連続な信号の上限の ${ratio.toFixed(1)}倍`);
+      ctx.info(`補正 ${offsetMs}ms: 未取り込み ${deficit} + 補正 ${rotation - deficit} = ずらし ${rotation}`);
+      ctx.info(`  期待位置 ${expectedSplice} の近傍に継ぎ目 ${near.at} (ずれ ${diff}) / ` +
+               `段差は連続な信号の上限の ${ratio.toFixed(1)}倍`);
       ctx.check(
-        `補正 ${offsetMs}ms で意図した量だけ回転している`,
-        ratio > 2 && Math.abs(diff) <= 512,
+        `補正 ${offsetMs}ms で意図した量だけずれている`,
+        deficit > 0 && ratio > 2 && Math.abs(diff) <= 512,
         `段差比 ${ratio.toFixed(1)}倍 / ずれ ${diff} サンプル`
+      );
+
+      // 差し替え後は継ぎ目が消えていること
+      await page.waitForTimeout(800);
+      const repaired = page.consoleLogs.some((l) => l.includes('Loop tail repaired'));
+      const after = await jumpNear(page, expectedSplice, 512);
+      const afterRatio = after.jump / maxSlope;
+      ctx.info(`  差し替え${repaired ? 'あり' : 'なし'} → 同じ位置の段差は上限の ${afterRatio.toFixed(1)}倍`);
+      ctx.check(
+        `補正 ${offsetMs}ms で差し替え後に継ぎ目が消える`,
+        repaired && afterRatio < 2,
+        `段差比 ${afterRatio.toFixed(1)}倍`
       );
       await page.close();
     }
