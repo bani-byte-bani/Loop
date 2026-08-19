@@ -673,10 +673,10 @@
 
 <script>
 (() => {
-  const APP_VERSION = 'v23';
+  const APP_VERSION = 'v24';
   // デプロイのたびに APP_VERSION / sw.js の CACHE_NAME と一緒に更新する。
   // UTCで持ち、表示時に閲覧者のローカル時刻へ変換する(時差の誤解を避けるため)
-  const APP_BUILT_AT = '2026-08-15T15:10:00Z';
+  const APP_BUILT_AT = '2026-08-16T04:20:00Z';
   console.log('[SYNC LOOPER] Script init start. Version:', APP_VERSION);
   window.addEventListener('error', (e) => {
     console.error('[SYNC LOOPER] window error event:', e.message, e.error);
@@ -916,7 +916,9 @@
     overdubArmed:false, overdubbing:false,
     // MIDIのStopで止めたトラックと、そのときのループ内位置(秒)。
     // Continue で元の位置から、Start で頭から鳴らし直すために覚えておく。
-    midiStopped:false, midiStopPhase:0
+    midiStopped:false, midiStopPhase:0,
+    // 1周目の末尾差し替え用。token は「予約後に消去/録り直しされた」場合の打ち切りに使う
+    repairTimer:null, repairToken:0
   }));
   let selectedId = 'A';
   const getSelected = () => tracks.find(t => t.id === selectedId);
@@ -955,6 +957,9 @@
   let captureChunks = [];        // { frame, chans:[Float32Array,...] }
   let captureChannels = 0;
   let activeRecStartFrame = 0;
+  // これより前のチャンクは捨ててよい。録音中と、末尾差し替えを待っている間は
+  // 録音開始位置に固定する(通常はプリロールぶんだけ残す)。
+  let captureKeepFrom = null;
   const PRE_ROLL_SEC = 0.85;
   // 切り出し窓を過去側にずらしておく余裕。ワークレットからのメッセージ到着が遅れても
   // 末尾を取りこぼさず、かつ「締切より前にバッファを用意する」ための猶予にもなる。
@@ -1221,6 +1226,13 @@
       filled += count;
     }
     return filled > 0 ? out : null;
+  }
+
+  // 取り込み済みの最終フレーム。まだ届いていない末尾の量を知るために使う。
+  function lastCapturedFrame(){
+    if (!captureChunks.length) return 0;
+    const last = captureChunks[captureChunks.length-1];
+    return last.frame + last.chans[0].length;
   }
 
   // 2つのバッファを加算する。長さは合わせてある前提で、短い方に合わせて足す。
@@ -1757,9 +1769,10 @@
       const { frame, chans } = e.data;
       captureChannels = chans.length;
       captureChunks.push({ frame, chans });
-      // 録音中は開始位置より前だけ、非録音中はプリロール分だけ残して捨てる
-      const keepFrom = (recordingTrackId !== null)
-        ? activeRecStartFrame
+      // 録音中と末尾差し替え待ちのあいだは開始位置より前だけ、
+      // それ以外はプリロール分だけ残して捨てる
+      const keepFrom = (captureKeepFrom !== null)
+        ? captureKeepFrom
         : frame - PRE_ROLL_SEC * audioCtx.sampleRate;
       while (captureChunks.length && captureChunks[0].frame + captureChunks[0].chans[0].length <= keepFrom){
         captureChunks.shift();
@@ -2125,6 +2138,9 @@
   // ---------- recording / playback per track ----------
   function startRecording(t){
     recordingTrackId = t.id;
+    // 前回の末尾差し替えが残っていたら打ち切る
+    t.repairToken++;
+    if (t.repairTimer){ clearTimeout(t.repairTimer); t.repairTimer = null; }
     const sr = audioCtx.sampleRate;
     // 小節頭を認識した時点の再生クロック位置。取りこぼし防止のガードぶんだけ
     // 手前から切り出し、レイテンシ補正と合わせて後段の回転で位相を合わせる
@@ -2142,6 +2158,7 @@
     // 到着ジッタやバッファ組み立て時間の影響を受けないようにするため)
     t.recPlayTime = (t.recStartFrame + captureGuardSamples + t.recTargetSamples) / sr;
     activeRecStartFrame = t.recStartFrame;
+    captureKeepFrom = t.recStartFrame;
     t.recStartPulse = pulseCount;
     t.state = 'recording';
     // 組み立てはクロックパルス任せにせず専用タイマーで予約する。
@@ -2161,8 +2178,18 @@
     if (t.state !== 'recording') return;   // タイマーとパルス判定の二重発火を防ぐ
     if (t.recPrepTimer){ clearTimeout(t.recPrepTimer); t.recPrepTimer = null; }
     if (t.id === selectedId) freezeTimer();
-    const raw = sliceCapture(t.recStartFrame, t.recTargetSamples);
+    // 締切より前に組み立てる都合で、末尾のうちまだ取り込めていない分だけ
+    // 切り出し窓を過去側へずらす。ずらした分の末尾には「録音開始より前の音」が
+    // 入るため、ここを最小限にしないとループの終わりがおかしくなる。
+    // (以前はガード0.6秒ぶんを丸ごとずらしており、録音開始と同時に演奏を始めると
+    //  末尾0.6秒が演奏前の無音で埋まっていた)
+    const recEndFrame = t.recStartFrame + captureGuardSamples + t.recTargetSamples;
+    const deficit = Math.min(captureGuardSamples,
+                             Math.max(0, recEndFrame - lastCapturedFrame()));
+    const raw = sliceCapture(recEndFrame - t.recTargetSamples - deficit, t.recTargetSamples);
     recordingTrackId = null;
+    console.log('[SYNC LOOPER] Tail not yet captured:', deficit, 'samples',
+                '(' + (deficit / audioCtx.sampleRate * 1000).toFixed(1) + 'ms)');
     if (!raw){
       t.state = 'empty';
       updateTransportUI(); renderTrackList();
@@ -2170,8 +2197,8 @@
       return;
     }
 
-    // ガードぶんを戻し、さらにレイテンシ補正ぶん前へ詰める位置
-    let rotation = captureGuardSamples + t.recLatencySamples;
+    // ずらしたぶんを戻し、さらにレイテンシ補正ぶん前へ詰める位置
+    let rotation = deficit + t.recLatencySamples;
 
     // オートアジャスト: しきい値を超えた最初の音が小節頭に来るよう回転量を足す。
     // 探索範囲は前後半拍まで(それ以上ずれていると別の拍を掴む危険があるため)。
@@ -2189,6 +2216,19 @@
       }
     }
 
+    // 回転で末尾に回り込むのは先頭から rotation ぶん。そこには1周期前の音が入る。
+    // 演奏中の素材なら繋がるが、録音と同時に演奏を始めた場合は演奏前の無音になる。
+    // 取り込みが追いついたら、回転の要らない「正しい窓」で切り直して差し替える。
+    const recStart = recEndFrame - t.recTargetSamples;
+    const repair = rotation > 0 ? {
+      start: recStart + rotation - deficit,      // = S + 録音補正 + オートアジャスト
+      samples: t.recTargetSamples,
+      badFrom: t.recTargetSamples - rotation,    // ここ以降が差し替えで変わる
+      original: t.overdubbing ? t.originalBuffer : null,
+      // 正しい窓の末尾が取り込まれるのを待つ
+      readyAt: t.recPlayTime + (rotation - deficit) / audioCtx.sampleRate + 0.05,
+    } : null;
+
     let buffer = rotateBufferLeft(raw, rotation);
 
     if (t.overdubbing && t.originalBuffer){
@@ -2205,6 +2245,7 @@
     // 録音が入ったのでカウントを切る(無音に戻ればまた鳴り始める)
     updateCountForSilence();
     startPlayback(t, t.recPlayTime);
+    scheduleTailRepair(t, repair);
     renderTrackList();
     if (t.id === selectedId){
       renderTimeline(); renderEffectsGrid();
@@ -2212,6 +2253,57 @@
         els.stateLine.textContent = `TRACK ${t.id} ループ再生中(オートアジャスト ${adjustMs > 0 ? '+' : ''}${adjustMs}ms)`;
       }
     }
+  }
+
+  // ---------- 1周目の末尾の差し替え ----------
+  // 締切前に組み立てる関係で、1周目のバッファは末尾のごく一部が
+  // 「録音開始より前の音」で埋まっている。取り込みが追いついた時点で
+  // 正しい末尾に差し替える。差し替え前後で末尾以外は1サンプルも変わらないので、
+  // 再生位置を保ったまま繋げば音は途切れない。
+  function scheduleTailRepair(t, repair){
+    if (!repair || !audioCtx){ captureKeepFrom = null; return; }
+    if (t.repairTimer){ clearTimeout(t.repairTimer); t.repairTimer = null; }
+    const token = ++t.repairToken;
+    const delayMs = (repair.readyAt - audioCtx.currentTime) * 1000;
+    t.repairTimer = setTimeout(() => {
+      t.repairTimer = null;
+      repairLoopTail(t, repair, token);
+    }, Math.max(0, delayMs));
+  }
+
+  function repairLoopTail(t, repair, token){
+    // 予約後に消された・録り直された・REVERSEされた場合は何もしない
+    const stale = token !== t.repairToken;
+    if (stale || t.state !== 'playing' || !t.buffer || t.reversed || !t.source || !t.fxChain){
+      if (!stale) captureKeepFrom = null;   // 録り直し中なら新しい録音の設定を壊さない
+      return;
+    }
+    // 回転が要らない位置で切り直す。ここが取り込めていれば末尾に過去の音は入らない。
+    let fixed = sliceCapture(repair.start, repair.samples);
+    captureKeepFrom = null;
+    if (!fixed || fixed.length !== t.buffer.length) return;
+    if (repair.original) fixed = mixBuffers(repair.original, fixed);
+
+    const sr = fixed.sampleRate;
+    const dur = fixed.duration;
+    // 差し替えで内容が変わるのは badFrom 以降だけ。そこを再生中に繋ぐと段差が
+    // 聞こえるので、その手前か、通り過ぎて次の周回に入ってから繋ぐ。
+    let at = audioCtx.currentTime + 0.05;
+    const phase = mod(at - t.playStartTime, dur) * sr;
+    if (phase >= repair.badFrom) at += (repair.samples - phase) / sr + 0.005;
+
+    const src = audioCtx.createBufferSource();
+    src.buffer = fixed;
+    src.loop = true;
+    src.connect(t.fxChain.input);
+    src.start(at, mod(at - t.playStartTime, dur));
+    try{ t.source.stop(at); }catch(e){ try{ t.source.stop(); }catch(e2){} }
+    t.source = src;
+    t.buffer = fixed;
+    t.originalBuffer = fixed;
+    console.log('[SYNC LOOPER] Loop tail repaired on TRACK', t.id,
+                '— replaced', ((repair.samples - repair.badFrom) / sr * 1000).toFixed(1), 'ms');
+    if (t.id === selectedId) renderTimeline();
   }
 
   // when を渡すとその時刻ちょうどに再生を開始する(オーディオスレッド側で正確に発火)。
@@ -2337,6 +2429,8 @@
     // 録音中のトラックを消したら録音も打ち切る
     if (recordingTrackId === t.id) recordingTrackId = null;
     if (t.recPrepTimer){ clearTimeout(t.recPrepTimer); t.recPrepTimer = null; }
+    t.repairToken++;
+    if (t.repairTimer){ clearTimeout(t.repairTimer); t.repairTimer = null; }
     t.overdubArmed = false; t.overdubbing = false;
     // 誤爆に備えて直前に消した1本だけ保持する
     if (t.buffer){
